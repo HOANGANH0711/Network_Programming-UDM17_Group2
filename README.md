@@ -7,12 +7,16 @@
 ## 👥 Team Members & Roles
 To ensure efficient collaboration and maximize our 6-member team's productivity, we have adopted a structured software development lifecycle approach:
 
-1. **Quan** - *Product Owner / Project Manager:* Manages project timeline, drafts proposals, defines business requirements, and delegates tasks.
-2. **[Member 2 Name]** - *System Architect / Backend Developer:* Designs the network architecture (Client-Server model) and handles core TCP/Socket communication.
-3. ****LE HOANG ANH**** - *Game Logic Developer:* Implements the Gomoku algorithms (validating coordinates, checking 5-in-a-row win/loss conditions).
-4. **[Member 4 Name]** - *UI/UX Designer & Frontend Developer:* Creates UI mockups via Figma and develops the graphical user interface (GUI) and countdown timer.
-5. **[Member 5 Name]** - *QA Engineer:* Develops test scripts to conduct Stress Testing and Performance Testing as per the project requirements.
-6. **[Member 6 Name]** - *Technical Writer:* Compiles documentation, gathers testing proofs, designs presentation slides, and records the final demo video.
+Lê Hoàng Anh - Product Owner / Project Manager:
+Manages the project timeline, coordinates team activities, drafts project proposals, defines business requirements, manages the GitHub repository, and supervises overall project progress.
+[Member 2 Name] - System Architect / Backend Developer:
+Designs the Client-Server architecture, implements TCP/Socket communication, manages matchmaking logic, handles multithreading, and synchronizes data between clients and server.
+[member 3 Name] - Game Logic Developer:
+Implements the Gomoku game algorithms including validating player moves, checking win/loss conditions (5 consecutive pieces), handling turn-based gameplay logic, and integrating game rules with the server.
+[Member 4 Name] - UI/UX Designer & Frontend Developer:
+Designs UI mockups using Figma and develops the Windows Forms graphical user interface (GUI), including the game board, player interface, notifications, and countdown timer system.
+[Member 5 Name] - QA Engineer & Technical Writer:
+Conducts Stress Testing and Performance Testing, prepares test scripts and bug reports, compiles project documentation, collects testing evidence, creates presentation slides, and records the final demo video.
 
 ---
 
