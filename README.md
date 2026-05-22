@@ -17,7 +17,7 @@ To ensure efficient collaboration and maximize our 5-member team's productivity,
 3. **[Member 3 Name]** - *Game Logic Developer:*  
    Implements the Gomoku game algorithms including validating player moves, checking win/loss conditions (5 consecutive pieces), handling turn-based gameplay logic, and integrating game rules with the server.
 
-4. **[Member 4 Name]** - *UI/UX Designer & Frontend Developer:*  
+4. **Ho Nguyen Dang Khoa** - *UI/UX Designer & Frontend Developer:*  
    Designs UI mockups using Figma and develops the Windows Forms graphical user interface (GUI), including the game board, player interface, notifications, and countdown timer system.
 
 5. **[Member 5 Name]** - *QA Engineer & Technical Writer:*  
