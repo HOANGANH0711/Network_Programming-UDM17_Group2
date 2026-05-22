@@ -20,7 +20,7 @@ To ensure efficient collaboration and maximize our 5-member team's productivity,
 4. **Ho Nguyen Dang Khoa** - *UI/UX Designer & Frontend Developer:*  
    Designs UI mockups using Figma and develops the Windows Forms graphical user interface (GUI), including the game board, player interface, notifications, and countdown timer system.
 
-5. **[Member 5 Name]** - *QA Engineer & Technical Writer:*  
+5. **Trần Thị Ánh Nguyệt** - *QA Engineer & Technical Writer:*  
    Conducts Stress Testing and Performance Testing, prepares test scripts and bug reports, compiles project documentation, collects testing evidence, creates presentation slides, and records the final demo video.
 
 ---
