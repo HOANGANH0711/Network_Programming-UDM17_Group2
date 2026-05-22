@@ -1,67 +1,260 @@
-#  Multiplayer Caro Game (Gomoku) 
-**Project Code:** UDM_17
-**Course:** Network Programming
+# UDM_17 – Network Caro Game
+
+## 1. Project Overview
+
+UDM_17 – Network Caro Game là dự án xây dựng ứng dụng game cờ Caro (Gomoku) chơi qua mạng sử dụng mô hình Client–Server với giao thức TCP Socket.
+
+Hệ thống cho phép nhiều người chơi kết nối đến server và thực hiện thi đấu 1vs1 theo thời gian thực. Toàn bộ logic trò chơi được xử lý phía server nhằm đảm bảo tính đồng bộ, ổn định và chính xác giữa các người chơi.
+
+Ứng dụng được phát triển bằng C# (.NET) với Windows Forms, cung cấp giao diện trực quan giúp người chơi dễ dàng thao tác, theo dõi trận đấu và tương tác với hệ thống.
+
+Dự án được thực hiện trong khuôn khổ học phần Network Programming.
 
 ---
 
-## 👥 Team Members & Roles
+# 2. Project Information
 
-To ensure efficient collaboration and maximize our 5-member team's productivity, we have adopted a structured software development lifecycle approach:
-
-1. **Lê Hoàng Anh** - *Product Owner / Project Manager:*  
-   Manages the project timeline, coordinates team activities, drafts project proposals, defines business requirements, manages the GitHub repository, and supervises overall project progress.
-
-2. **[Member 2 Name]** - *System Architect / Backend Developer:*  
-   Designs the Client-Server architecture, implements TCP/Socket communication, manages matchmaking logic, handles multithreading, and synchronizes data between clients and server.
-
-3. **Lâm Gia An** - *Game Logic Developer:*  
-   Implements the Gomoku game algorithms including validating player moves, checking win/loss conditions (5 consecutive pieces), handling turn-based gameplay logic, and integrating game rules with the server.
-
-4. **Ho Nguyen Dang Khoa** - *UI/UX Designer & Frontend Developer:*  
-   Designs UI mockups using Figma and develops the Windows Forms graphical user interface (GUI), including the game board, player interface, notifications, and countdown timer system.
-
-5. **Trần Thị Ánh Nguyệt** - *QA Engineer & Technical Writer:*  
-   Conducts Stress Testing and Performance Testing, prepares test scripts and bug reports, compiles project documentation, collects testing evidence, creates presentation slides, and records the final demo video.
+* **Project Code:** UDM_17
+* **Project Title:** Network Caro Game
+* **Project Type:** Network Programming Project
+* **Architecture:** Client – Server
+* **Protocol:** TCP Socket
+* **Programming Language:** C# (.NET Framework)
 
 ---
 
-## 📁 Repository Structure
-Following the strict guidelines provided by the lecturer:
+# 3. Team Members & Responsibilities
 
-- 📂 `Code/`: Contains all source code (Server, Client, and GUI scripts).
-- 📂 `DOCX/`: Contains project proposals, business requirement documents, and system design specifications.
-- 📂 `Extra/`: Contains UI mockup images, visual proofs of Stress/Performance tests, and demo videos.
-- 📂 `PPTX/`: Contains presentation slides for the final evaluation.
+Để đảm bảo tiến độ phát triển và tối ưu hiệu quả làm việc nhóm, các thành viên được phân công nhiệm vụ cụ thể như sau:
+
+### 1. Lê Hoàng Anh – Project Manager / System Coordinator
+
+* Quản lý tiến độ dự án và điều phối công việc nhóm
+* Quản lý GitHub repository và cấu trúc dự án
+* Tổng hợp tài liệu và kiểm soát tiến độ phát triển hệ thống
+* Hỗ trợ tích hợp các module Client–Server
+* Chuẩn bị nội dung báo cáo và trình bày dự án
+
+### 2. [Tên thành viên] – Backend Developer / Socket Communication
+
+* Thiết kế và triển khai kiến trúc Client–Server
+* Xây dựng giao tiếp TCP Socket bằng TcpListener và TcpClient
+* Xử lý kết nối nhiều client đồng thời
+* Đồng bộ dữ liệu game giữa các người chơi theo thời gian thực
+* Quản lý xử lý đa luồng và truyền dữ liệu mạng
+
+### 3. Lâm Gia An – Game Logic Developer
+
+* Xây dựng thuật toán gameplay Caro (Gomoku)
+* Kiểm tra điều kiện thắng/thua
+* Xử lý logic lượt chơi (turn-based)
+* Kiểm tra tính hợp lệ của nước đi
+* Tích hợp countdown timer và xử lý timeout
+
+### 4. Ho Nguyen Dang Khoa – Frontend Developer / UI-UX Designer
+
+* Thiết kế giao diện người dùng bằng Windows Forms
+* Xây dựng Login Form, Lobby Form và Game Form
+* Thiết kế bàn cờ Caro và hiển thị trạng thái trận đấu
+* Tối ưu trải nghiệm người dùng và bố cục giao diện
+* Xử lý các thao tác tương tác trên GUI
+
+### 5. Trần Thị Ánh Nguyệt – QA Engineer & Documentation Specialist
+
+* Thực hiện kiểm thử chức năng và kiểm thử kết nối mạng
+* Kiểm thử tải và hiệu năng server
+* Ghi nhận lỗi và hỗ trợ debug hệ thống
+* Soạn thảo tài liệu kỹ thuật và báo cáo dự án
+* Chuẩn bị slide thuyết trình và video demo cuối kỳ
 
 ---
 
-##  Project Scope & Requirements
+# 4. Main Features
 
-### Functional Requirements (FR)
-- **Matchmaking:** Clients connect to the Server via IP and Port. The Server automatically pairs two connected clients into a game session.
-- **Game Mechanics:** Turn-based Gomoku gameplay (X vs. O). The system automatically detects win/loss conditions (5 consecutive pieces horizontally, vertically, or diagonally).
-- **Time Constraint:** A strict countdown timer (e.g., 15 seconds) is enforced for each turn. If a player fails to make a move within the time limit, they automatically lose the match.
+## 🔹 Connection & Communication
 
-### Non-Functional Requirements (NFR)
-- **Platform:** The application must be a standalone GUI application running on Windows OS (No Web Applications allowed).
-- **Performance:** The Server must be highly concurrent and capable of handling multiple simultaneous data transmissions without crashing.
-- **Proof of Testing:** Comprehensive Stress and Performance tests must be conducted, with solid visual evidence provided in the repository.
+* Client kết nối đến Server thông qua TCP Socket
+* Server quản lý nhiều client đồng thời
+* Đồng bộ dữ liệu giữa các người chơi theo thời gian thực
+
+## 🔹 Gameplay
+
+* Chơi cờ Caro 1vs1 theo lượt (turn-based)
+* Hệ thống tự động kiểm tra thắng/thua
+* Kiểm tra tính hợp lệ của nước đi
+* Hiển thị quân cờ X/O trực quan
+* Đồng bộ trạng thái bàn cờ realtime
+* Tích hợp countdown timer cho mỗi lượt chơi
+
+## 🔹 Matchmaking System
+
+* Người chơi đăng nhập bằng username
+* Hiển thị danh sách người chơi online
+* Gửi lời thách đấu đến người chơi khác
+* Tạo và quản lý trận đấu giữa hai client
+
+## 🔹 User Interface
+
+* Giao diện Windows Forms trực quan
+* Tương tác bằng chuột trên bàn cờ
+* Hiển thị lượt chơi và trạng thái trận đấu
+* Hiển thị thông báo kết quả và countdown timer
 
 ---
 
-##  Technology Stack
-- **Programming Language:** C#
-- **Network Protocol:** TCP/IP (Socket Programming)
-- **GUI Framework:** Tkinter / PyQt
+# 5. System Architecture
+
+Hệ thống được xây dựng theo mô hình:
+
+```text
+Client A  <--TCP-->  Server  <--TCP-->  Client B
+```
+
+## 🔹 Server Responsibilities
+
+* Lắng nghe và quản lý kết nối từ nhiều client
+* Điều phối trận đấu giữa các người chơi
+* Xử lý logic game và kiểm tra tính hợp lệ của nước đi
+* Đồng bộ trạng thái game giữa các client
+* Quản lý countdown timer và kết quả trận đấu
+
+## 🔹 Client Responsibilities
+
+* Hiển thị giao diện người dùng (GUI)
+* Gửi nước đi và yêu cầu đến server
+* Nhận và cập nhật trạng thái game realtime
+* Hiển thị bàn cờ và kết quả trận đấu
 
 ---
 
-##  Project Progress & Milestones
-*This checklist is updated at the End Of Week (EOW) to track continuous progress and prevent project failure due to inactivity.*
+# 6. Graphical User Interface (GUI)
 
-- [x] **Week 1:** Initialize repository structure, assign team roles, and establish the README documentation.
-- [ ] **Week 2:** Finalize Project Proposal (`DOCX`), design initial UI Mockups (`Extra`), and define the data payload structure.
-- [ ] **Week 3:** Implement core Socket Server/Client communication and basic GUI layout (`Code`).
-- [ ] **Week 4:** Integrate game algorithms and the countdown timer logic.
-- [ ] **Week 5:** Execute automated Stress Tests, document the results (`Extra`), and perform bug fixing.
-- [ ] **Week 6:** Finalize presentation slides (`PPTX`), record the final Demo Video, and prepare for the defense.
+Ứng dụng sử dụng Windows Forms (WinForms) để xây dựng giao diện người dùng.
+
+## Các màn hình chính:
+
+### 🔹 Login Form
+
+* Nhập username
+* Kết nối đến server
+
+### 🔹 Lobby Form
+
+* Hiển thị danh sách người chơi online
+* Gửi lời thách đấu
+
+### 🔹 Game Form
+
+* Hiển thị bàn cờ Caro
+* Thực hiện nước đi
+* Hiển thị countdown timer
+* Hiển thị trạng thái trận đấu và kết quả
+
+### 🔹 History Form
+
+* Hiển thị lịch sử trận đấu đã chơi
+
+---
+
+# 7. Technologies Used
+
+* **Programming Language:** C# (.NET Framework)
+* **GUI Framework:** Windows Forms
+* **Network Programming:** TCP Socket
+* **Architecture:** Client–Server
+* **Concurrency:** Thread / Async
+* **IDE:** Visual Studio
+
+---
+
+# 8. Project Structure
+
+```text
+UDM_17/
+│
+├── Client/        # Ứng dụng phía Client (GUI + Socket)
+├── Server/        # Server trung tâm xử lý game
+├── Shared/        # DTO, Model, Message, Constants
+├── DOCX/          # Tài liệu dự án
+├── PPTX/          # Slide thuyết trình
+└── Extra/         # Hình ảnh, video demo, test result
+```
+
+---
+
+# 9. Project Objectives
+
+Mục tiêu của dự án:
+
+* Áp dụng kiến thức TCP Socket Programming
+* Xây dựng hệ thống Client–Server hoàn chỉnh
+* Phát triển ứng dụng realtime multiplayer game
+* Thiết kế GUI bằng Windows Forms
+* Hiểu và xử lý đồng bộ dữ liệu thời gian thực
+* Áp dụng xử lý đa luồng trong lập trình mạng
+
+---
+
+# 10. Current Status
+
+## ✅ Completed – Functional System
+
+Đã hoàn thành:
+
+* Xây dựng TCP Server
+* Phát triển Client GUI
+* Kết nối Client–Server
+* Gameplay Caro hoàn chỉnh
+* Đồng bộ nước đi realtime
+* Countdown timer
+* Lobby và challenge player
+* Lưu lịch sử trận đấu
+
+## 🔹 Future Improvements
+
+* Thêm hệ thống phòng chơi (Room System)
+* Chat realtime giữa người chơi
+* Tối ưu async và đa luồng
+* Thêm reconnect system
+* Tối ưu giao diện người dùng
+
+---
+
+# 11. How to Run
+
+## ▶️ Server
+
+1. Open solution bằng Visual Studio
+2. Build project Server
+3. Run Server application
+4. Server bắt đầu lắng nghe kết nối
+
+## ▶️ Client
+
+1. Build project Client
+2. Run Client application
+3. Nhập username
+4. Kết nối server
+5. Bắt đầu chơi game
+
+---
+
+# 12. Course Information
+
+* **Course:** Network Programming
+* **Project Type:** Group Project
+* **Project Code:** UDM_17
+
+© Net_Group 02
+
+
+# 13. Tiến Độ & Các Mốc Quan Trọng Của Dự Án
+
+*Danh sách này được cập nhật hàng tuần nhằm theo dõi tiến độ phát triển của dự án.*
+
+* [x] **Tuần 1:** Khởi tạo cấu trúc repository, phân chia vai trò thành viên và xây dựng tài liệu README.
+* [x] **Tuần 2:** Hoàn thiện đề xuất dự án (`DOCX`), thiết kế giao diện mẫu ban đầu và xây dựng cấu trúc dữ liệu truyền nhận.
+* [] **Tuần 3:** Triển khai giao tiếp TCP Socket giữa Server và Client, đồng thời xây dựng giao diện GUI cơ bản.
+* [] **Tuần 4:** Tích hợp gameplay Caro, thuật toán kiểm tra thắng/thua và countdown timer.
+* [] **Tuần 5:** Thực hiện kiểm thử hệ thống, sửa lỗi và tối ưu đồng bộ dữ liệu realtime.
+* [] **Tuần 6:** Hoàn thiện slide thuyết trình (`PPTX`), video demo và chuẩn bị cho buổi bảo vệ dự án.
