@@ -27,9 +27,8 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 
 Để đảm bảo tiến độ phát triển và tối ưu hiệu quả làm việc nhóm, các thành viên được phân công nhiệm vụ cụ thể như sau:
 
-Ok, mình sửa đúng phần **Team Members & Responsibilities** để khi đưa vào README sẽ **không bị dính chữ, đúng Markdown chuẩn GitHub**.
-
 ---
+
 ## 1. Thành viên 1 – Server Core Engineer
 
 **Vai trò**
