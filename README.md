@@ -14,7 +14,7 @@ To ensure efficient collaboration and maximize our 5-member team's productivity,
 2. **[Member 2 Name]** - *System Architect / Backend Developer:*  
    Designs the Client-Server architecture, implements TCP/Socket communication, manages matchmaking logic, handles multithreading, and synchronizes data between clients and server.
 
-3. **[Member 3 Name]** - *Game Logic Developer:*  
+3. **Lâm Gia An** - *Game Logic Developer:*  
    Implements the Gomoku game algorithms including validating player moves, checking win/loss conditions (5 consecutive pieces), handling turn-based gameplay logic, and integrating game rules with the server.
 
 4. **Ho Nguyen Dang Khoa** - *UI/UX Designer & Frontend Developer:*  
