@@ -75,7 +75,7 @@ Xây dựng logic và luật chơi Caro.
 
 ---
 
-## 4. Thành viên 4 – UI & Network Engineer
+## 4. Ho Nguyen Dang Khoa – UI & Network Engineer
 
 **Vai trò**
 Phát triển giao diện và kết nối Client–Server.
