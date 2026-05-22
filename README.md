@@ -27,62 +27,67 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 
 Để đảm bảo tiến độ phát triển và tối ưu hiệu quả làm việc nhóm, các thành viên được phân công nhiệm vụ cụ thể như sau:
 
-.1. Thành viên 1 – Server Core Engineer
+1. Thành viên 1 – Server Core Engineer
 
 Vai trò
 Xây dựng và quản lý hệ thống Server.
-Nhiệm vụ
-• Xây dựng TCP Server bằng TcpListener
-• Quản lý kết nối nhiều client
-• Quản lý vòng đời client (session)
-• Tổ chức phòng chơi (GameRoom)
-• Đảm bảo xử lý đa luồng (thread-safe)
 
-2.2. Thành viên 2 – Matchmaking & Game Flow Engineer
+Nhiệm vụ
+
+Xây dựng TCP Server bằng TcpListener
+Quản lý kết nối nhiều client
+Quản lý vòng đời client (session)
+Tổ chức phòng chơi (GameRoom)
+Đảm bảo xử lý đa luồng (thread-safe)
+2. Thành viên 2 – Matchmaking & Game Flow Engineer
 
 Vai trò
 Xây dựng hệ thống Lobby và điều phối trận đấu.
+
 Nhiệm vụ
-• Quản lý danh sách người chơi online
-• Đồng bộ danh sách tới client
-• Ghép cặp người chơi
-• Điều phối luồng trận đấu (start/in-game/end)
-• Kết nối Server và Game Logic
-2.3. Thành viên 3 – Game Logic Engineer
+
+Quản lý danh sách người chơi online
+Đồng bộ danh sách tới client
+Ghép cặp người chơi
+Điều phối luồng trận đấu (start/in-game/end)
+Kết nối Server và Game Logic
+3. Thành viên 3 – Game Logic Engineer
 
 Vai trò
 Xây dựng logic và luật chơi Caro.
+
 Nhiệm vụ
-• Quản lý bàn cờ
-• Xây dựng lượt chơi (turn-based)
-• Kiểm tra nước đi hợp lệ
-• Xác định thắng/thua
-• Đồng bộ trạng thái game
-2.4. Thành viên 4 – UI & Network Engineer
+
+Quản lý bàn cờ
+Xây dựng lượt chơi (turn-based)
+Kiểm tra nước đi hợp lệ
+Xác định thắng/thua
+Đồng bộ trạng thái game
+4. Thành viên 4 – UI & Network Engineer
 
 Vai trò
 Phát triển giao diện và kết nối Client–Server.
 
 Nhiệm vụ
-• Xây dựng giao diện WinForms
-• Xử lý chuyển form và sự kiện UI
-• Kết nối TCP Client tới Server
-• Serialize/Deserialize dữ liệu (JSON)
-• Gửi/nhận dữ liệu bất đồng bộ
 
-2.5. Thành viên 5 – Integration & System Engineer
+Xây dựng giao diện WinForms
+Xử lý chuyển form và sự kiện UI
+Kết nối TCP Client tới Server
+Serialize/Deserialize dữ liệu (JSON)
+Gửi/nhận dữ liệu bất đồng bộ
+5. Thành viên 5 – Integration & System Engineer
 
 Vai trò
 Tích hợp hệ thống và đảm bảo hoạt động end-to-end.
 
 Nhiệm vụ
-• Kết nối UI – Network – Game Logic
-• Xử lý luồng dữ liệu toàn hệ thống
-• Đồng bộ trạng thái game
-• Kiểm thử Client–Server end-to-end
-• Debug và xử lý lỗi hệ thống
-• Lưu trữ lịch sử trận đấu
 
+Kết nối UI – Network – Game Logic
+Xử lý luồng dữ liệu toàn hệ thống
+Đồng bộ trạng thái game
+Kiểm thử Client–Server end-to-end
+Debug và xử lý lỗi hệ thống
+Lưu trữ lịch sử trận đấu
 ---
 
 # 4. Main Features
