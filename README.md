@@ -59,7 +59,7 @@ Xây dựng hệ thống Lobby và điều phối trận đấu.
 
 ---
 
-## 3. Thành viên 3 – Game Logic Engineer
+## 3. Tran Thi Anh Nguyet – Game Logic Engineer
 
 **Vai trò**
 Xây dựng logic và luật chơi Caro.
