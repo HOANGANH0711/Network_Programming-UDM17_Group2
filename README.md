@@ -9,7 +9,7 @@ To ensure efficient collaboration and maximize our 6-member team's productivity,
 
 1. **Quan** - *Product Owner / Project Manager:* Manages project timeline, drafts proposals, defines business requirements, and delegates tasks.
 2. **[Member 2 Name]** - *System Architect / Backend Developer:* Designs the network architecture (Client-Server model) and handles core TCP/Socket communication.
-3. **[Member 3 Name]** - *Game Logic Developer:* Implements the Gomoku algorithms (validating coordinates, checking 5-in-a-row win/loss conditions).
+3. ****LE HOANG ANH**** - *Game Logic Developer:* Implements the Gomoku algorithms (validating coordinates, checking 5-in-a-row win/loss conditions).
 4. **[Member 4 Name]** - *UI/UX Designer & Frontend Developer:* Creates UI mockups via Figma and develops the graphical user interface (GUI) and countdown timer.
 5. **[Member 5 Name]** - *QA Engineer:* Develops test scripts to conduct Stress Testing and Performance Testing as per the project requirements.
 6. **[Member 6 Name]** - *Technical Writer:* Compiles documentation, gathers testing proofs, designs presentation slides, and records the final demo video.
