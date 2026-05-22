@@ -49,7 +49,6 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 * Kiểm tra điều kiện thắng/thua
 * Xử lý logic lượt chơi (turn-based)
 * Kiểm tra tính hợp lệ của nước đi
-* Tích hợp countdown timer và xử lý timeout
 
 ### 4. Ho Nguyen Dang Khoa – Frontend Developer / UI-UX Designer
 
@@ -59,13 +58,13 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 * Tối ưu trải nghiệm người dùng và bố cục giao diện
 * Xử lý các thao tác tương tác trên GUI
 
-### 5. Trần Thị Ánh Nguyệt – QA Engineer & Documentation Specialist
-
-* Thực hiện kiểm thử chức năng và kiểm thử kết nối mạng
-* Kiểm thử tải và hiệu năng server
-* Ghi nhận lỗi và hỗ trợ debug hệ thống
-* Soạn thảo tài liệu kỹ thuật và báo cáo dự án
-* Chuẩn bị slide thuyết trình và video demo cuối kỳ
+###5. Trần Thị Ánh Nguyệt – Feature Developer / QA Engineer
+Phát triển chức năng Timer đếm ngược cho mỗi lượt chơi xử lý timeout
+Xây dựng chức năng Undo/Redo nước đi bằng Stack
+Thực hiện kiểm thử logic game và kiểm thử kết nối Client–Server
+Ghi nhận lỗi và hỗ trợ debug hệ thống
+Soạn thảo tài liệu kỹ thuật và báo cáo dự án
+Chuẩn bị slide thuyết trình và video demo cuối kỳ
 
 ---
 
