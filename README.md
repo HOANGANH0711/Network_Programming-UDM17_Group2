@@ -45,7 +45,7 @@ Xây dựng và quản lý hệ thống Server.
 
 ---
 
-## 2. Thành viên 2 – Matchmaking & Game Flow Engineer
+## 2. Lâm Gia An – Matchmaking & Game Flow Engineer
 
 **Vai trò**
 Xây dựng hệ thống Lobby và điều phối trận đấu.
