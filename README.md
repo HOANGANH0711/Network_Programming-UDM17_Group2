@@ -35,7 +35,7 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 * Hỗ trợ tích hợp các module Client–Server
 * Chuẩn bị nội dung báo cáo và trình bày dự án
 
-### 2. [Tên thành viên] – Backend Developer / Socket Communication
+### 2. Nguyễn Trọng Nhân – Backend Developer / Socket Communication
 
 * Thiết kế và triển khai kiến trúc Client–Server
 * Xây dựng giao tiếp TCP Socket bằng TcpListener và TcpClient
