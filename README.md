@@ -27,44 +27,61 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 
 Để đảm bảo tiến độ phát triển và tối ưu hiệu quả làm việc nhóm, các thành viên được phân công nhiệm vụ cụ thể như sau:
 
-### 1. Lê Hoàng Anh – Project Manager / System Coordinator
+.1. Thành viên 1 – Server Core Engineer
 
-* Quản lý tiến độ dự án và điều phối công việc nhóm
-* Quản lý GitHub repository và cấu trúc dự án
-* Tổng hợp tài liệu và kiểm soát tiến độ phát triển hệ thống
-* Hỗ trợ tích hợp các module Client–Server
-* Chuẩn bị nội dung báo cáo và trình bày dự án
+Vai trò
+Xây dựng và quản lý hệ thống Server.
+Nhiệm vụ
+• Xây dựng TCP Server bằng TcpListener
+• Quản lý kết nối nhiều client
+• Quản lý vòng đời client (session)
+• Tổ chức phòng chơi (GameRoom)
+• Đảm bảo xử lý đa luồng (thread-safe)
 
-### 2. Nguyễn Trọng Nhân – Backend Developer / Socket Communication
+2.2. Thành viên 2 – Matchmaking & Game Flow Engineer
 
-* Thiết kế và triển khai kiến trúc Client–Server
-* Xây dựng giao tiếp TCP Socket bằng TcpListener và TcpClient
-* Xử lý kết nối nhiều client đồng thời
-* Đồng bộ dữ liệu game giữa các người chơi theo thời gian thực
-* Quản lý xử lý đa luồng và truyền dữ liệu mạng
+Vai trò
+Xây dựng hệ thống Lobby và điều phối trận đấu.
+Nhiệm vụ
+• Quản lý danh sách người chơi online
+• Đồng bộ danh sách tới client
+• Ghép cặp người chơi
+• Điều phối luồng trận đấu (start/in-game/end)
+• Kết nối Server và Game Logic
+2.3. Thành viên 3 – Game Logic Engineer
 
-### 3. Lâm Gia An – Game Logic Developer
+Vai trò
+Xây dựng logic và luật chơi Caro.
+Nhiệm vụ
+• Quản lý bàn cờ
+• Xây dựng lượt chơi (turn-based)
+• Kiểm tra nước đi hợp lệ
+• Xác định thắng/thua
+• Đồng bộ trạng thái game
+2.4. Thành viên 4 – UI & Network Engineer
 
-* Xây dựng thuật toán gameplay Caro (Gomoku)
-* Kiểm tra điều kiện thắng/thua
-* Xử lý logic lượt chơi (turn-based)
-* Kiểm tra tính hợp lệ của nước đi
+Vai trò
+Phát triển giao diện và kết nối Client–Server.
 
-### 4. Ho Nguyen Dang Khoa – Frontend Developer / UI-UX Designer
+Nhiệm vụ
+• Xây dựng giao diện WinForms
+• Xử lý chuyển form và sự kiện UI
+• Kết nối TCP Client tới Server
+• Serialize/Deserialize dữ liệu (JSON)
+• Gửi/nhận dữ liệu bất đồng bộ
 
-* Thiết kế giao diện người dùng bằng Windows Forms
-* Xây dựng Login Form, Lobby Form và Game Form
-* Thiết kế bàn cờ Caro và hiển thị trạng thái trận đấu
-* Tối ưu trải nghiệm người dùng và bố cục giao diện
-* Xử lý các thao tác tương tác trên GUI
+2.5. Thành viên 5 – Integration & System Engineer
 
-### 5. Trần Thị Ánh Nguyệt – Feature Developer / QA Engineer
-* Phát triển chức năng Timer đếm ngược cho mỗi lượt chơi xử lý timeout
-* Xây dựng chức năng Undo/Redo nước đi bằng Stack
-* Thực hiện kiểm thử logic game và kiểm thử kết nối Client–Server
-* Ghi nhận lỗi và hỗ trợ debug hệ thống
-* Soạn thảo tài liệu kỹ thuật và báo cáo dự án
-* Chuẩn bị slide thuyết trình và video demo cuối kỳ
+Vai trò
+Tích hợp hệ thống và đảm bảo hoạt động end-to-end.
+
+Nhiệm vụ
+• Kết nối UI – Network – Game Logic
+• Xử lý luồng dữ liệu toàn hệ thống
+• Đồng bộ trạng thái game
+• Kiểm thử Client–Server end-to-end
+• Debug và xử lý lỗi hệ thống
+• Lưu trữ lịch sử trận đấu
 
 ---
 
