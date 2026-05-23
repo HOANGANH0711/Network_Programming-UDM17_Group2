@@ -29,7 +29,7 @@ Dự án được thực hiện trong khuôn khổ học phần Network Programm
 
 ---
 
-## 1. Thành viên 1 – Server Core Engineer
+## 1. Nguyễn Trọng Nhân – Server Core Engineer
 
 **Vai trò**
 Xây dựng và quản lý hệ thống Server.
