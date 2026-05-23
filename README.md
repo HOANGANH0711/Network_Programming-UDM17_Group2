@@ -208,12 +208,9 @@ Client A  <--TCP-->  Server  <--TCP-->  Client B
 ```text
 UDM_17/
 │
-├── Client/        # Ứng dụng phía Client (GUI + Socket)
-├── Server/        # Server trung tâm xử lý game
-├── Shared/        # DTO, Model, Message, Constants
-├── DOCX/          # Tài liệu dự án
-├── PPTX/          # Slide thuyết trình
-└── Extra/         # Hình ảnh, video demo, test result
+├── Client/        # Ứng dụng phía người chơi (GUI + kết nối server)
+├── Server/        # Server trung tâm (xử lý logic game & kết nối)
+└── Shared/        # Thành phần dùng chung (Model, DTO, Message,…)
 ```
 
 ---
