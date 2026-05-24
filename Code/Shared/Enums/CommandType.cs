@@ -8,24 +8,18 @@ namespace Shared.Enums
 {
     public enum CommandType
     {
-        // ====== Auth =====
+        // ===== Auth =====
         LOGIN,
         LOGOUT,
+
         // ===== Lobby =====
         GET_PLAYER_LIST,
         PLAYER_LIST,
+        PLAYER_JOINED,
+        PLAYER_LEFT,
         CHALLENGE,
         CHALLENGE_ACCEPT,
         CHALLENGE_DECLINE,
-
-        // ===== GAME =====
-        GAME_START,
-        MAKE_MOVE,
-        MOVE_RESULT,
-        GAME_WIN,
-        GAME_LOSE,
-        GAME_DRAW,
-        TIMER_UPDATE,
 
         // ===== Room =====
         CREATE_ROOM,
@@ -33,7 +27,21 @@ namespace Shared.Enums
         LEAVE_ROOM,
         GET_ROOM_LIST,
         ROOM_LIST,
-        
+        ROOM_CREATED,
+        ROOM_JOINED,
+        ROOM_FULL,
+
+        // ===== Game =====
+        GAME_START,
+        MAKE_MOVE,
+        MOVE_RESULT,
+        GAME_WIN,
+        GAME_LOSE,
+        GAME_DRAW,
+        GAME_END,
+        TIMER_UPDATE,
+        OPPONENT_DISCONNECTED,
+
         // ===== History =====
         GET_HISTORY,
         HISTORY_DATA,
