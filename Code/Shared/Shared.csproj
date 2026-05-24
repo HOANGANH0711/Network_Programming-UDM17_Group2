@@ -41,6 +41,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DTO\GameDTO.cs" />
     <Compile Include="DTO\UserDTO.cs" />
     <Compile Include="Enums\CommandType.cs" />
     <Compile Include="Models\Packet.cs" />
