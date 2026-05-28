@@ -11,6 +11,6 @@ namespace Shared.DTO
         public string UserID { get; set; }
         public string UserName { get; set; }
         public bool IsOnline {  get; set; }
-        public bool ISInGame { get; set; }
+        public bool IsInGame { get; set; }
     }
 }

@@ -12,13 +12,15 @@ namespace Shared.DTO
         public string Player1ID { get; set; }
         public string Player2ID { get; set; }
         public string CurrentTurnID { get; set; }
-        public int[,] Board { get; set; }
+        public int [][] Board { get; set; }
         public bool IsGameOver { get; set; }
         public string WinnerID { get; set; }
         public int TimeRemaining { get; set; }
         public GameDTO()
         {
-            Board = new int[15, 15];
+            Board = new int[15][];
+            for(int i=0;i<15;i++)
+                Board[i] = new int[15];
             IsGameOver = false;
         }
     }

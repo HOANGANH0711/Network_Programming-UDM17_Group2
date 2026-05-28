@@ -2,4 +2,5 @@
   <Project Path="Client/Client.csproj" />
   <Project Path="Server/Server.csproj" />
   <Project Path="Shared/Shared.csproj" Id="f6045ca0-0285-44f7-be65-aff588ed4d66" />
+  <Project Path="TestShared/TestShared.csproj" Id="4dc3da53-9a1a-42bc-a8d7-7465b2aa8127" />
 </Solution>
