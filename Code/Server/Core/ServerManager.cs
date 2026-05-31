@@ -16,15 +16,15 @@ namespace Server.Core
     /// </summary>
     public class ServerManager
     {
-        private TcpListener _tcpListener;
+        private TcpListener? _tcpListener;
         private List<ClientHandler> _connectedClients;
         private bool _isRunning;
         private int _serverPort;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly object _clientLock = new object();
 
-        public event EventHandler<ClientConnectedEventArgs> ClientConnected;
-        public event EventHandler<ClientDisconnectedEventArgs> ClientDisconnected;
+        public event EventHandler<ClientConnectedEventArgs>? ClientConnected;
+        public event EventHandler<ClientDisconnectedEventArgs>? ClientDisconnected;
 
         public ServerManager(int port = 5000)
         {
@@ -67,6 +67,8 @@ namespace Server.Core
             {
                 try
                 {
+                    if (_tcpListener == null) break;
+                    
                     TcpClient tcpClient = await _tcpListener.AcceptTcpClientAsync();
                     
                     // Handle client connection in a separate task
@@ -89,9 +91,9 @@ namespace Server.Core
         /// </summary>
         private async Task HandleClientConnectionAsync(TcpClient tcpClient)
         {
+            string clientId = Guid.NewGuid().ToString().Substring(0, 8);
             try
             {
-                string clientId = Guid.NewGuid().ToString().Substring(0, 8);
                 var clientHandler = new ClientHandler(tcpClient, clientId);
 
                 lock (_clientLock)
@@ -99,7 +101,7 @@ namespace Server.Core
                     _connectedClients.Add(clientHandler);
                 }
 
-                IPEndPoint remoteEndPoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
+                IPEndPoint? remoteEndPoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
                 LogInfo($"[{clientId}] Client connected from {remoteEndPoint?.Address}:{remoteEndPoint?.Port}");
 
                 // Raise ClientConnected event
@@ -120,22 +122,17 @@ namespace Server.Core
             finally
             {
                 // Remove client from list when disconnected
-                string disconnectedClientId = null;
                 lock (_clientLock)
                 {
-                    var clientHandler = _connectedClients.FirstOrDefault(c => c.ClientId == (disconnectedClientId ?? c.ClientId));
+                    var clientHandler = _connectedClients.FirstOrDefault(c => c.ClientId == clientId);
                     if (clientHandler != null)
                     {
-                        disconnectedClientId = clientHandler.ClientId;
                         _connectedClients.Remove(clientHandler);
                     }
                 }
 
-                if (!string.IsNullOrEmpty(disconnectedClientId))
-                {
-                    LogInfo($"[{disconnectedClientId}] Client disconnected");
-                    ClientDisconnected?.Invoke(this, new ClientDisconnectedEventArgs { ClientId = disconnectedClientId });
-                }
+                LogInfo($"[{clientId}] Client disconnected");
+                ClientDisconnected?.Invoke(this, new ClientDisconnectedEventArgs { ClientId = clientId });
             }
         }
 
@@ -154,13 +151,16 @@ namespace Server.Core
                 _tcpListener?.Stop();
 
                 // Close all client connections
+                List<ClientHandler> clientsToDisconnect;
                 lock (_clientLock)
                 {
-                    foreach (var client in _connectedClients)
-                    {
-                        await client.DisconnectAsync();
-                    }
+                    clientsToDisconnect = new List<ClientHandler>(_connectedClients);
                     _connectedClients.Clear();
+                }
+                
+                foreach (var client in clientsToDisconnect)
+                {
+                    await client.DisconnectAsync();
                 }
 
                 LogInfo("Server stopped");
@@ -268,13 +268,13 @@ namespace Server.Core
     // Event args classes
     public class ClientConnectedEventArgs : EventArgs
     {
-        public string ClientId { get; set; }
-        public string RemoteAddress { get; set; }
+        public string? ClientId { get; set; }
+        public string? RemoteAddress { get; set; }
         public int RemotePort { get; set; }
     }
 
     public class ClientDisconnectedEventArgs : EventArgs
     {
-        public string ClientId { get; set; }
+        public string? ClientId { get; set; }
     }
 }

@@ -21,8 +21,8 @@ namespace Server.Core
         private bool _isConnected;
         private CancellationTokenSource _cancellationTokenSource;
 
-        public event EventHandler<MessageReceivedEventArgs> MessageReceived;
-        public event EventHandler Disconnected;
+        public event EventHandler<MessageReceivedEventArgs>? MessageReceived;
+        public event EventHandler? Disconnected;
 
         public ClientHandler(TcpClient tcpClient, string clientId)
         {
@@ -107,7 +107,7 @@ namespace Server.Core
         /// <summary>
         /// Disconnect the client
         /// </summary>
-        public async Task DisconnectAsync()
+        public Task DisconnectAsync()
         {
             try
             {
@@ -120,6 +120,7 @@ namespace Server.Core
             {
                 Console.WriteLine($"[{_clientId}] Error disconnecting: {ex.Message}");
             }
+            return Task.CompletedTask;
         }
 
         public string ClientId => _clientId;
@@ -129,6 +130,6 @@ namespace Server.Core
     // Event args class
     public class MessageReceivedEventArgs : EventArgs
     {
-        public string Message { get; set; }
+        public string? Message { get; set; }
     }
 }
