@@ -1,50 +1,91 @@
-﻿using System;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Text.Json;
-using Shared.Models;
+﻿using Server.Core;
 
-namespace Server
+class Program
 {
-    class Program
+    static async Task Main(string[] args)
     {
-        static void Main(string[] args)
+        Console.WriteLine("╔══════════════════════════════════════╗");
+        Console.WriteLine("║    Caro Online - Game Server        ║");
+        Console.WriteLine("║       Member 1: Server Core          ║");
+        Console.WriteLine("╚══════════════════════════════════════╝");
+        Console.WriteLine();
+
+        // Initialize ServerManager
+        int port = 5000;
+        var serverManager = new ServerManager(port);
+
+        // Subscribe to connection events
+        serverManager.ClientConnected += (sender, e) =>
         {
-            TcpListener server = new TcpListener(IPAddress.Any, 8888);
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"→ Event: Client Connected [ID: {e.ClientId}]");
+            Console.WriteLine($"  Connected Clients: {serverManager.GetClientCount()}");
+            Console.ResetColor();
+        };
 
-            server.Start();
+        serverManager.ClientDisconnected += (sender, e) =>
+        {
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine($"← Event: Client Disconnected [ID: {e.ClientId}]");
+            Console.WriteLine($"  Remaining Clients: {serverManager.GetClientCount()}");
+            Console.ResetColor();
+        };
 
-            Console.WriteLine("Server dang chay...");
+        // Create a cancellation token for graceful shutdown
+        var cts = new CancellationTokenSource();
 
-            TcpClient client = server.AcceptTcpClient();
+        // Handle Ctrl+C for graceful shutdown
+        Console.CancelKeyPress += (sender, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
 
-            Console.WriteLine("Client da ket noi!");
+        try
+        {
+            // Start the server
+            var serverTask = serverManager.StartAsync();
 
-            StreamReader reader = new StreamReader(client.GetStream());
+            // Monitor server status
+            var monitorTask = MonitorServerAsync(serverManager, cts.Token);
 
-            StreamWriter writer = new StreamWriter(client.GetStream());
+            // Wait for cancellation
+            await Task.WhenAll(serverTask, monitorTask);
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Critical Error: {ex.Message}");
+            Console.ResetColor();
+        }
+        finally
+        {
+            // Gracefully stop the server
+            await serverManager.StopAsync();
+            Console.WriteLine("\nServer shutdown complete.");
+        }
+    }
 
-            writer.AutoFlush = true;
-
-            while (true)
+    static async Task MonitorServerAsync(ServerManager serverManager, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
             {
-                string? json = reader.ReadLine();
+                await Task.Delay(10000, cancellationToken); // Check every 10 seconds
 
-                if (!string.IsNullOrEmpty(json))
+                if (serverManager.IsRunning)
                 {
-                    Packet? packet = JsonSerializer.Deserialize<Packet>(json);
-
-                    if (packet is not null)
-                    {
-                        Console.WriteLine("Command: " + packet.Command);
-
-                        Console.WriteLine("Data: " + packet.Data);
-
-                        writer.WriteLine("Login success");
-                    }
+                    int clientCount = serverManager.GetClientCount();
+                    Console.ForegroundColor = ConsoleColor.Blue;
+                    Console.WriteLine($"\n[Monitor] Active Connections: {clientCount}");
+                    Console.ResetColor();
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancellation is requested
         }
     }
 }
