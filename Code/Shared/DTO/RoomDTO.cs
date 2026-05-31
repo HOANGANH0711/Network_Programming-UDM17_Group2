@@ -10,7 +10,7 @@ namespace Shared.DTO
     {
         public string RoomID { get; set; }
         public string RoomName { get; set; }
-        public string OwerID { get; set; }
+        public string OwnerID { get; set; }
         public string Player1ID { get; set; }
         public string Player2ID { get; set; }
         public bool IsPlaying { get; set; }

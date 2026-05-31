@@ -20,6 +20,9 @@ namespace Shared.Enums
         CHALLENGE,
         CHALLENGE_ACCEPT,
         CHALLENGE_DECLINE,
+        LOBBY_UPDATE,
+        INVITE,
+        INVITE_RESPONSE,
 
         // ===== Room =====
         CREATE_ROOM,
@@ -41,7 +44,8 @@ namespace Shared.Enums
         GAME_END,
         TIMER_UPDATE,
         OPPONENT_DISCONNECTED,
-
+        GAME_MOVE,
+        GAME_RESULT,
         // ===== History =====
         GET_HISTORY,
         HISTORY_DATA,
