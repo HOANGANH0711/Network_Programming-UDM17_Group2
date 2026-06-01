@@ -36,7 +36,7 @@ namespace Client.Forms
                 if (socket == null)
                     socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
 
-                socket.Connect(txtServerIP.Text, 8888);
+                socket.Connect(txtServerIP.Text, 5000);
 
                 if (socket.Connected)
                 {
