@@ -40,6 +40,19 @@ namespace Server.GameLogic
             for (int r = 0; r < Size; r++)
                 for (int c = 0; c < Size; c++)
                     _cells[r, c].State = CellState.Empty;
+
+        }
+        public bool IsFull()
+        {
+            for (int r = 0; r < Size; r++)
+            {
+                for (int c = 0; c < Size; c++)
+                {
+                    if (_cells[r, c].State == CellState.Empty)
+                        return false;
+                }
+            }
+            return true;
         }
     }
 }

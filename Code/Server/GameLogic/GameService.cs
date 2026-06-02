@@ -48,7 +48,11 @@ namespace Server.GameLogic
                 Winner = move.Player;
                 return $"WIN:{move.Player}";
             }
-
+            if (_board.IsFull())
+            {
+                Status = GameStatus.Finished;
+                return "DRAW";
+            }
             // Chuyen luot
             CurrentPlayer = (CurrentPlayer == CellState.X)
                             ? CellState.O : CellState.X;
