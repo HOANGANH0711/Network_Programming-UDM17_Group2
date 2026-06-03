@@ -4,8 +4,8 @@ namespace Shared.Models
 {
     public class Player
     {
-        public string PlayerId { get; set; }
-        public string PlayerName { get; set; }
+        public string PlayerId { get; set; } = "";
+        public string PlayerName { get; set; } = "";
         public PlayerStatus Status { get; set; }
 
         public Player(string playerId, string playerName)
