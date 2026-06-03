@@ -1,8 +1,13 @@
-﻿using Server.Core;
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Server.Core;
 
-class Program
+namespace Server
 {
-    static async Task Main(string[] args)
+    class Program
+    {
+        static async Task Main(string[] args)
     {
         Console.WriteLine("╔══════════════════════════════════════╗");
         Console.WriteLine("║    Caro Online - Game Server        ║");
@@ -65,7 +70,6 @@ class Program
             Console.WriteLine("\nServer shutdown complete.");
         }
     }
-
     static async Task MonitorServerAsync(ServerManager serverManager, CancellationToken cancellationToken)
     {
         try
@@ -88,4 +92,6 @@ class Program
             // Expected when cancellation is requested
         }
     }
+}
+
 }

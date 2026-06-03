@@ -14,6 +14,11 @@ namespace Server.Core
     /// - Maintains list of connected clients
     /// - Logs connection/disconnection events
     /// </summary>
+    using Shared.Models;
+    using Shared.Enums;
+    using Shared.DTO;
+    using Server.Rooms;
+
     public class ServerManager
     {
         private TcpListener? _tcpListener;
@@ -22,6 +27,8 @@ namespace Server.Core
         private int _serverPort;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly object _clientLock = new object();
+        private readonly GameRoomManager _roomManager = new GameRoomManager();
+        private readonly Dictionary<string, string> _usernames = new Dictionary<string, string>();
 
         public event EventHandler<ClientConnectedEventArgs>? ClientConnected;
         public event EventHandler<ClientDisconnectedEventArgs>? ClientDisconnected;
@@ -101,6 +108,42 @@ namespace Server.Core
                     _connectedClients.Add(clientHandler);
                 }
 
+                // Subscribe to incoming messages from this client
+                clientHandler.MessageReceived += async (s, e) =>
+                {
+                    try
+                    {
+                        if (e?.Packet != null)
+                        {
+                            await HandlePacketAsync(clientHandler, e.Packet);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error handling packet from {clientId}: {ex.Message}");
+                    }
+                };
+
+                // When client disconnects, cleanup rooms and username map
+                clientHandler.Disconnected += (s, e) =>
+                {
+                    try
+                    {
+                        lock (_clientLock)
+                        {
+                            if (_usernames.ContainsKey(clientHandler.ClientId))
+                                _usernames.Remove(clientHandler.ClientId);
+                        }
+
+                        // Remove player from any rooms
+                        _roomManager.PlayerLeft(clientHandler.ClientId);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error during disconnect cleanup for {clientId}: {ex.Message}");
+                    }
+                };
+
                 IPEndPoint? remoteEndPoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
                 LogInfo($"[{clientId}] Client connected from {remoteEndPoint?.Address}:{remoteEndPoint?.Port}");
 
@@ -134,6 +177,125 @@ namespace Server.Core
                 LogInfo($"[{clientId}] Client disconnected");
                 ClientDisconnected?.Invoke(this, new ClientDisconnectedEventArgs { ClientId = clientId });
             }
+        }
+
+        private async Task HandlePacketAsync(ClientHandler client, Packet packet)
+        {
+            switch (packet.Command)
+            {
+                case CommandType.LOGIN:
+                {
+                    // packet.Data expected to be username
+                    var username = packet.Data ?? string.Empty;
+                    lock (_clientLock)
+                    {
+                        _usernames[client.ClientId] = username;
+                    }
+
+                    // Acknowledge
+                    var ack = PacketHelper.Create(CommandType.SUCCESS, "Logged in", client.ClientId);
+                    await client.SendPacketAsync(ack);
+                    break;
+                }
+
+                case CommandType.CREATE_ROOM:
+                {
+                    var roomName = packet.Data ?? "Room";
+                    var room = _roomManager.CreateRoom(roomName, client.ClientId);
+
+                    var resp = PacketHelper.Create(CommandType.ROOM_CREATED, room.Info, client.ClientId);
+                    await client.SendPacketAsync(resp);
+
+                    // Broadcast updated room list
+                    var list = _roomManager.GetRoomList().ToList();
+                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                    await BroadcastPacketAsync(listPkt);
+                    break;
+                }
+
+                case CommandType.GET_ROOM_LIST:
+                {
+                    var list = _roomManager.GetRoomList().ToList();
+                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                    await client.SendPacketAsync(listPkt);
+                    break;
+                }
+
+                case CommandType.JOIN_ROOM:
+                {
+                    // packet.Data expected to be roomId
+                    var roomId = packet.Data ?? string.Empty;
+                    bool ok = _roomManager.TryJoinRoom(roomId, client.ClientId);
+                    if (ok)
+                    {
+                        var room = _roomManager.GetRoomList().FirstOrDefault(r => r.RoomID == roomId);
+                        var resp = PacketHelper.Create(CommandType.ROOM_JOINED, room, client.ClientId);
+                        await client.SendPacketAsync(resp);
+
+                        // Notify other players in room
+                        if (room != null)
+                        {
+                            var otherId = room.Player1ID == client.ClientId ? room.Player2ID : room.Player1ID;
+                            if (!string.IsNullOrEmpty(otherId))
+                            {
+                                var otherClient = GetConnectedClients().FirstOrDefault(c => c.ClientId == otherId);
+                                if (otherClient != null)
+                                {
+                                    var notify = PacketHelper.Create(CommandType.PLAYER_JOINED, room, client.ClientId);
+                                    await otherClient.SendPacketAsync(notify);
+                                }
+                            }
+                        }
+                        // Broadcast updated room list
+                        var list = _roomManager.GetRoomList().ToList();
+                        var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                        await BroadcastPacketAsync(listPkt);
+                    }
+                    else
+                    {
+                        var err = PacketHelper.Create(CommandType.ROOM_FULL, "Room is full", client.ClientId);
+                        await client.SendPacketAsync(err);
+                    }
+                    break;
+                }
+
+                case CommandType.LEAVE_ROOM:
+                {
+                    _roomManager.PlayerLeft(client.ClientId);
+                    var ok = PacketHelper.Create(CommandType.SUCCESS, "Left room", client.ClientId);
+                    await client.SendPacketAsync(ok);
+
+                    var list = _roomManager.GetRoomList().ToList();
+                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                    await BroadcastPacketAsync(listPkt);
+                    break;
+                }
+
+                case CommandType.PING:
+                {
+                    var pong = PacketHelper.Create(CommandType.SUCCESS, "PONG", client.ClientId);
+                    await client.SendPacketAsync(pong);
+                    break;
+                }
+
+                // Other commands (game-related) can be forwarded or handled here
+                default:
+                {
+                    LogInfo($"Received command {packet.Command} from {client.ClientId}");
+                    break;
+                }
+            }
+        }
+
+        private async Task BroadcastPacketAsync(Packet packet)
+        {
+            var clients = GetConnectedClients();
+            var tasks = new List<Task>();
+            foreach (var c in clients)
+            {
+                tasks.Add(c.SendPacketAsync(packet));
+            }
+            await Task.WhenAll(tasks);
         }
 
         /// <summary>
