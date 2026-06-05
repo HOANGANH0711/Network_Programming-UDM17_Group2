@@ -45,6 +45,11 @@ namespace Shared.Enums
         TIMER_UPDATE,
         OPPONENT_DISCONNECTED,
         GAME_MOVE,
+        GAME_CHAT,
+        DRAW_REQUEST,
+        DRAW_RESPONSE,
+        SURRENDER,
+        START_BOT_GAME,
         GAME_RESULT,
         // ===== History =====
         GET_HISTORY,
