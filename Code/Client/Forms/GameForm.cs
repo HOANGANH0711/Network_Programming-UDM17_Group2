@@ -22,6 +22,7 @@ namespace Client.Forms
         private string _lastBoardKey = "";
         private string _lastErrorMessage = "";
         private DateTime _lastErrorAt = DateTime.MinValue;
+        private bool _drawRequestPending;
 
         public GameForm()
         {
@@ -40,11 +41,16 @@ namespace Client.Forms
             lblTitle.Location = new Point(30, 14);
             lblTitle.ForeColor = Color.White;
 
+            var oldBoard = pnlBoard;
+            Controls.Remove(oldBoard);
+            oldBoard.Dispose();
+            pnlBoard = new SmoothBoardPanel();
             pnlBoard.Location = new Point(30, 70);
             pnlBoard.Size = new Size(Offset + Cell * SizeBoard + 10, Offset + Cell * SizeBoard + 10);
             pnlBoard.BackColor = Color.FromArgb(250, 248, 239);
-            EnableDoubleBuffering(pnlBoard);
+            pnlBoard.Paint += panel1_Paint;
             pnlBoard.MouseClick += BoardClick;
+            Controls.Add(pnlBoard);
 
             _lblInfo.Location = new Point(620, 70);
             _lblInfo.Size = new Size(460, 60);
@@ -77,14 +83,14 @@ namespace Client.Forms
             _btnDraw.Location = new Point(620, 430);
             _btnDraw.Size = new Size(105, 36);
             StyleActionButton(_btnDraw, Color.FromArgb(0, 122, 204));
-            _btnDraw.Click += async (_, _) => await _service.SendAsync(CommandType.DRAW_REQUEST, _service.CurrentGame?.GameID ?? "");
+            _btnDraw.Click += btnDraw_Click;
             Controls.Add(_btnDraw);
 
             _btnResign.Text = "Dau hang";
             _btnResign.Location = new Point(735, 430);
             _btnResign.Size = new Size(105, 36);
             StyleActionButton(_btnResign, Color.FromArgb(220, 53, 69));
-            _btnResign.Click += async (_, _) => await _service.SendAsync(CommandType.RESIGN, _service.CurrentGame?.GameID ?? "");
+            _btnResign.Click += btnResign_Click;
             Controls.Add(_btnResign);
 
             btnBack.Text = "Ve lobby";
@@ -201,7 +207,8 @@ namespace Client.Forms
                 _lstMoves.EndUpdate();
                 pnlBoard.Invalidate();
             }
-            _btnDraw.Enabled = _btnResign.Enabled = !game.IsGameOver && !game.IsBotGame;
+            _btnDraw.Enabled = !game.IsGameOver && !game.IsBotGame && !_drawRequestPending;
+            _btnResign.Enabled = !game.IsGameOver;
             if (game.IsGameOver && !_endMessageShown)
             {
                 _endMessageShown = true;
@@ -219,13 +226,6 @@ namespace Client.Forms
             return true;
         }
 
-        private static void EnableDoubleBuffering(Control control)
-        {
-            control.GetType()
-                .GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                ?.SetValue(control, true, null);
-        }
-
         private static void StyleActionButton(Button button, Color color)
         {
             button.BackColor = color;
@@ -237,6 +237,35 @@ namespace Client.Forms
             button.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(color);
             button.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             button.UseVisualStyleBackColor = false;
+        }
+
+        private async void btnDraw_Click(object? sender, EventArgs e)
+        {
+            var game = _service.CurrentGame;
+            if (game == null || game.IsGameOver)
+                return;
+            if (game.IsBotGame)
+            {
+                MessageBox.Show("Bot khong ho tro cau hoa. Ban co the bam Dau hang de ket thuc van.");
+                return;
+            }
+
+            _drawRequestPending = true;
+            _btnDraw.Enabled = false;
+            await _service.SendAsync(CommandType.DRAW_REQUEST, game.GameID);
+            MessageBox.Show("Da gui yeu cau cau hoa cho doi thu.");
+        }
+
+        private async void btnResign_Click(object? sender, EventArgs e)
+        {
+            var game = _service.CurrentGame;
+            if (game == null || game.IsGameOver)
+                return;
+            if (MessageBox.Show("Ban chac chan muon dau hang?", "Dau hang", MessageBoxButtons.YesNo) != DialogResult.Yes)
+                return;
+
+            _btnResign.Enabled = false;
+            await _service.SendAsync(CommandType.RESIGN, game.GameID);
         }
 
         private async void btnSend_Click(object? sender, EventArgs e)
@@ -303,6 +332,8 @@ namespace Client.Forms
             }
             else if (command == CommandType.DRAW_DECLINE)
             {
+                _drawRequestPending = false;
+                _btnDraw.Enabled = _service.CurrentGame is { IsGameOver: false, IsBotGame: false };
                 MessageBox.Show("Doi thu tu choi cau hoa.");
             }
         }
@@ -329,6 +360,19 @@ namespace Client.Forms
             _lastErrorMessage = message;
             _lastErrorAt = DateTime.Now;
             MessageBox.Show(message);
+        }
+
+        private sealed class SmoothBoardPanel : Panel
+        {
+            public SmoothBoardPanel()
+            {
+                SetStyle(ControlStyles.UserPaint |
+                         ControlStyles.AllPaintingInWmPaint |
+                         ControlStyles.OptimizedDoubleBuffer |
+                         ControlStyles.ResizeRedraw, true);
+                DoubleBuffered = true;
+                UpdateStyles();
+            }
         }
     }
 }
