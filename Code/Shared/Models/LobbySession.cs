@@ -1,21 +1,20 @@
-﻿using Shared.Enums;
+﻿using System.Collections.Concurrent;
+using Shared.Enums;
 
 namespace Shared.Models
 {
     public class LobbySession
     {
-        private readonly Dictionary<string, Player> _players = new();
+        private readonly ConcurrentDictionary<string, Player> _players = new();
 
         public bool AddPlayer(Player player)
         {
-            if (_players.ContainsKey(player.PlayerId)) return false;
-            _players[player.PlayerId] = player;
-            return true;
+            return _players.TryAdd(player.PlayerId, player);
         }
 
         public bool RemovePlayer(string playerId)
         {
-            return _players.Remove(playerId);
+            return _players.TryRemove(playerId, out _);
         }
 
         public List<Player> GetOnlinePlayers()

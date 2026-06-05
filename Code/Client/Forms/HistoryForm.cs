@@ -8,17 +8,21 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace Client.Forms{
+namespace Client.Forms
+{
     public partial class HistoryForm : Form
     {
-        public HistoryForm()
+        private Client.Network.GameClientService _service;
+
+        public HistoryForm(Client.Network.GameClientService service)
         {
             InitializeComponent();
+            _service = service;
         }
 
         private void btnBack_Click(object sender, EventArgs e)
         {
-            LobbyForm lobby = new LobbyForm();
+            LobbyForm lobby = new LobbyForm(_service);
             lobby.Show();
             this.Hide();
         }

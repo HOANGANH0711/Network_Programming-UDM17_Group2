@@ -8,12 +8,12 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Client.Network;
+
 namespace Client.Forms
 {
     public partial class LoginForm : Form
     {
-        private System.Net.Sockets.Socket? socket;
-
         public LoginForm()
         {
             InitializeComponent();
@@ -33,28 +33,16 @@ namespace Client.Forms
         {
             try
             {
-                if (socket == null)
-                    socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                var service = new GameClientService();
+                service.Connect(txtServerIP.Text, 5000);
 
-                socket.Connect(txtServerIP.Text, 5000);
+                MessageBox.Show("Kết nối server thành công!");
 
-                if (socket.Connected)
-                {
-                    byte[] data = Encoding.UTF8.GetBytes("Hello Server");
-                    socket.Send(data);
-
-                    MessageBox.Show("Kết nối server thành công!");
-
-                    LobbyForm lobby = new LobbyForm();
-                    lobby.Show();
-                    this.Hide();
-                }
-                else
-                {
-                    MessageBox.Show("Không kết nối được server!");
-                }
+                LobbyForm lobby = new LobbyForm(service);
+                lobby.Show();
+                this.Hide();
             }
-            catch (System.Net.Sockets.SocketException ex)
+            catch (Exception ex)
             {
                 MessageBox.Show("Không kết nối được server! " + ex.Message);
             }
