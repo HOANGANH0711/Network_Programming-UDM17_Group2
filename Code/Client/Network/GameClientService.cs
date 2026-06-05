@@ -1,129 +1,144 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Shared.DTO;
 using Shared.Enums;
 using Shared.Models;
-using Shared.DTO;
-using System.Text.Json;
-using System.Net.Sockets;
-using System.IO;
-using System.Windows.Forms;
 
 namespace Client.Network
 {
     public class GameClientService
     {
-        private TcpClient? client;
-        private StreamReader? reader;
-        private StreamWriter? writer;
+        public static GameClientService Instance { get; } = new GameClientService();
 
-        // EVENTS - Cac form/UI se lang nghe cac event nay
-        // Khi GameClientService nhan duoc Packet bang event thi UI se tu cap nhat
+        private readonly ClientSocket _socket = new ClientSocket();
 
+        public string PlayerId { get; private set; } = "";
+        public string PlayerName { get; private set; } = "";
+        public GameStateDto? CurrentGame { get; private set; }
+        public List<UserDTO> LastPlayers { get; private set; } = new List<UserDTO>();
+        public List<HistoryItemDto> LastHistory { get; private set; } = new List<HistoryItemDto>();
+
+        public event Action? OnLoginSuccess;
         public event Action<List<UserDTO>>? OnPlayerListReceived;
         public event Action<List<RoomDTO>>? OnRoomListReceived;
-        public event Action<GameDTO>? OnGameStarted;
+        public event Action<GameStateDto>? OnGameStarted;
+        public event Action<GameStateDto>? OnGameState;
         public event Action<MoveDTO>? OnMoveMade;
-        public event Action<string>? OnGameEnded;
+        public event Action<GameStateDto>? OnGameEnded;
+        public event Action<ChatDto>? OnChatReceived;
+        public event Action<InviteDto>? OnInviteReceived;
+        public event Action<CommandType, string>? OnDrawMessage;
+        public event Action<List<HistoryItemDto>>? OnHistoryReceived;
         public event Action<string>? OnError;
-        public event Action<UserDTO>? OnInviteReveived;
+        public event Action<string>? OnDisconnected;
 
-        // Ket noi server
-        public void Connect(string ip, int port)
+        private GameClientService()
         {
-            client = new TcpClient(ip, port);
-
-            reader = new StreamReader(client.GetStream());
-
-            writer = new StreamWriter(client.GetStream());
-
-            writer.AutoFlush = true;
+            _socket.PacketReceived += HandlePacket;
+            _socket.Disconnected += message => OnDisconnected?.Invoke(message);
         }
 
-        // Test gui packet len server
-        public void TestSend()
+        public async Task ConnectAndLoginAsync(string ip, int port, string playerName)
         {
-            if (writer == null)
-            {
-                MessageBox.Show("Chua ket noi server");
-                return;
-            }
-
-            Packet packet = new Packet()
-            {
-                Command = CommandType.LOGIN,
-                Data = "Khoa"
-            };
-
-            string json = JsonSerializer.Serialize(packet);
-
-            writer.WriteLine(json);
-
-            MessageBox.Show("Da gui packet len server");
+            PlayerName = playerName;
+            await _socket.ConnectAsync(ip, port);
+            await SendAsync(CommandType.LOGIN, playerName);
         }
 
-        // Goi ham moi khi nhan duoc packet tu server
+        public Task SendAsync<T>(CommandType command, T data)
+        {
+            return _socket.SendAsync(PacketHelper.Create(command, data, PlayerId));
+        }
+
         public void HandlePacket(Packet packet)
         {
             switch (packet.Command)
             {
-                // nhan danh sach nguoi choi trong lobby
-                case CommandType.PLAYER_LIST:
-                    var players = JsonSerializer.Deserialize<List<UserDTO>>(packet.Data);
-
-                    if (players is not null)
-                        OnPlayerListReceived?.Invoke(players);
-
+                case CommandType.SUCCESS:
+                    if (!string.IsNullOrWhiteSpace(packet.SenderID))
+                        PlayerId = packet.SenderID;
+                    OnLoginSuccess?.Invoke();
+                    _ = SendAsync(CommandType.GET_PLAYER_LIST, "");
                     break;
 
-                // nhan danh sach phong
-                case CommandType.ROOM_LIST:
-                    var rooms = JsonSerializer.Deserialize<List<RoomDTO>>(packet.Data);
+                case CommandType.PLAYER_LIST:
+                case CommandType.LOBBY_UPDATE:
+                    var players = Serializer.Deserialize<List<UserDTO>>(packet.Data);
+                    if (players is not null)
+                    {
+                        LastPlayers = players;
+                        OnPlayerListReceived?.Invoke(players);
+                    }
+                    break;
 
+                case CommandType.ROOM_LIST:
+                    var rooms = Serializer.Deserialize<List<RoomDTO>>(packet.Data);
                     if (rooms is not null)
                         OnRoomListReceived?.Invoke(rooms);
-
                     break;
 
-                // nhan loi moi
                 case CommandType.INVITE:
-                    var inviter = JsonSerializer.Deserialize<UserDTO>(packet.Data);
-
-                    if (inviter is not null)
-                        OnInviteReveived?.Invoke(inviter);
-
+                    var invite = Serializer.Deserialize<InviteDto>(packet.Data);
+                    if (invite is not null)
+                        OnInviteReceived?.Invoke(invite);
                     break;
 
-                // game bat dau
                 case CommandType.GAME_START:
-                    var game = JsonSerializer.Deserialize<GameDTO>(packet.Data);
-
-                    if (game is not null)
-                        OnGameStarted?.Invoke(game);
-
+                    var started = Serializer.Deserialize<GameStateDto>(packet.Data);
+                    if (started is not null)
+                    {
+                        CurrentGame = started;
+                        OnGameStarted?.Invoke(started);
+                    }
                     break;
 
-                // co nuoc di moi
                 case CommandType.GAME_MOVE:
-                    var move = JsonSerializer.Deserialize<MoveDTO>(packet.Data);
-
+                    var move = Serializer.Deserialize<MoveDTO>(packet.Data);
                     if (move is not null)
                         OnMoveMade?.Invoke(move);
-
                     break;
 
-                // game ket thuc
+                case CommandType.GAME_STATE:
+                case CommandType.TIMER_UPDATE:
+                    var state = Serializer.Deserialize<GameStateDto>(packet.Data);
+                    if (state is not null)
+                    {
+                        CurrentGame = state;
+                        OnGameState?.Invoke(state);
+                    }
+                    break;
+
+                case CommandType.GAME_CHAT:
+                    var chat = Serializer.Deserialize<ChatDto>(packet.Data);
+                    if (chat is not null)
+                        OnChatReceived?.Invoke(chat);
+                    break;
+
+                case CommandType.DRAW_REQUEST:
+                case CommandType.DRAW_ACCEPT:
+                case CommandType.DRAW_DECLINE:
+                    OnDrawMessage?.Invoke(packet.Command, packet.SenderID);
+                    break;
+
                 case CommandType.GAME_END:
-                    OnGameEnded?.Invoke(packet.Data);
-
+                case CommandType.GAME_RESULT:
+                    var ended = Serializer.Deserialize<GameStateDto>(packet.Data);
+                    if (ended is not null)
+                    {
+                        CurrentGame = ended;
+                        OnGameEnded?.Invoke(ended);
+                    }
                     break;
 
-                // bao loi
+                case CommandType.HISTORY_DATA:
+                    var history = Serializer.Deserialize<List<HistoryItemDto>>(packet.Data);
+                    if (history is not null)
+                    {
+                        LastHistory = history;
+                        OnHistoryReceived?.Invoke(history);
+                    }
+                    break;
+
                 case CommandType.ERROR:
                     OnError?.Invoke(packet.Data);
-
                     break;
             }
         }

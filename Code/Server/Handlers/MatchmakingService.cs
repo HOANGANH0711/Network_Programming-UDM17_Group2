@@ -9,9 +9,9 @@ namespace Server.Handlers
         private readonly LobbySession _lobby = new();
         private readonly Dictionary<string, InviteDto> _pendingInvites = new();
 
-        public event Action<string, object> SendToClient;
-        public event Action<object> BroadcastToLobby;
-        public event Func<string, string, string> CreateGameRoom;
+        public event Action<string, object>? SendToClient;
+        public event Action<object>? BroadcastToLobby;
+        public event Func<string, string, string>? CreateGameRoom;
 
         public bool PlayerJoinLobby(string playerId, string playerName)
         {
