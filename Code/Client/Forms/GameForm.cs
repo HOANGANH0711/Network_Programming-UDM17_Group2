@@ -7,11 +7,12 @@ namespace Client.Forms
 {
     public partial class GameForm : Form
     {
-        private GameClientService service = new GameClientService();
+        private GameClientService _service;
 
-        public GameForm()
+        public GameForm(GameClientService service)
         {
             InitializeComponent();
+            _service = service;
         }
 
         private void panel1_Paint(object sender, PaintEventArgs e)
@@ -21,7 +22,7 @@ namespace Client.Forms
 
         private void btnBack_Click(object sender, EventArgs e)
         {
-            LobbyForm lobby = new LobbyForm();
+            LobbyForm lobby = new LobbyForm(_service);
 
             lobby.Show();
 

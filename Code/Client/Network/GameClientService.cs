@@ -127,5 +127,33 @@ namespace Client.Network
                     break;
             }
         }
+
+        // Gui loi moi choi co tuong toi nguoi choi khac
+        public void SendInvite(string targetName)
+        {
+            if (writer == null) return;
+
+            var packet = new Packet()
+            {
+                Command = CommandType.INVITE,
+                Data = targetName
+            };
+
+            writer.WriteLine(JsonSerializer.Serialize(packet));
+        }
+
+        // Tra loi loi moi: true = chap nhan, false = tu choi
+        public void SendInviteResponse(bool accepted)
+        {
+            if (writer == null) return;
+
+            var packet = new Packet()
+            {
+                Command = CommandType.INVITE_RESPONSE,
+                Data = accepted ? "true" : "false"
+            };
+
+            writer.WriteLine(JsonSerializer.Serialize(packet));
+        }
     }
 }

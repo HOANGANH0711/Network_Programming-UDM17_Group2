@@ -8,16 +8,11 @@ using System.Threading.Tasks;
 
 namespace Server.Core
 {
-    /// <summary>
-    /// ServerManager: Manages TCP server operations and client connections
-    /// - Accepts incoming client connections
-    /// - Maintains list of connected clients
-    /// - Logs connection/disconnection events
-    /// </summary>
     using Shared.Models;
     using Shared.Enums;
     using Shared.DTO;
     using Server.Rooms;
+    using Server.Handlers;
 
     public class ServerManager
     {
@@ -28,6 +23,7 @@ namespace Server.Core
         private CancellationTokenSource _cancellationTokenSource;
         private readonly object _clientLock = new object();
         private readonly GameRoomManager _roomManager = new GameRoomManager();
+        private readonly MatchmakingService _matchmaking = new MatchmakingService();
         private readonly Dictionary<string, string> _usernames = new Dictionary<string, string>();
 
         public event EventHandler<ClientConnectedEventArgs>? ClientConnected;
@@ -39,11 +35,28 @@ namespace Server.Core
             _connectedClients = new List<ClientHandler>();
             _isRunning = false;
             _cancellationTokenSource = new CancellationTokenSource();
+
+            _matchmaking.BroadcastToLobby += async payload =>
+            {
+                var pkt = PacketHelper.Create(CommandType.PLAYER_LIST, payload);
+                await BroadcastPacketAsync(pkt);
+            };
+
+            _matchmaking.SendToClient += async (playerId, payload) =>
+            {
+                var pkt = PacketHelper.Create(CommandType.INVITE, payload);
+                await SendToClientAsync(playerId, System.Text.Json.JsonSerializer.Serialize(pkt));
+            };
+
+            _matchmaking.CreateGameRoom += (p1Id, p2Id) =>
+            {
+                string p1Name = _usernames.TryGetValue(p1Id, out var n1) ? n1 : p1Id;
+                var room = _roomManager.CreateRoom($"{p1Name}'s Room", p1Id);
+                _roomManager.TryJoinRoom(room.RoomID, p2Id);
+                return room.RoomID;
+            };
         }
 
-        /// <summary>
-        /// Start the TCP server and begin accepting client connections
-        /// </summary>
         public async Task StartAsync()
         {
             try
@@ -55,7 +68,6 @@ namespace Server.Core
                 LogInfo($"Server started on port {_serverPort}");
                 LogInfo("Waiting for client connections...");
 
-                // Accept client connections in a background task
                 await AcceptClientsAsync();
             }
             catch (Exception ex)
@@ -65,9 +77,6 @@ namespace Server.Core
             }
         }
 
-        /// <summary>
-        /// Accept incoming client connections
-        /// </summary>
         private async Task AcceptClientsAsync()
         {
             while (_isRunning && !_cancellationTokenSource.Token.IsCancellationRequested)
@@ -75,15 +84,12 @@ namespace Server.Core
                 try
                 {
                     if (_tcpListener == null) break;
-                    
+
                     TcpClient tcpClient = await _tcpListener.AcceptTcpClientAsync();
-                    
-                    // Handle client connection in a separate task
                     _ = HandleClientConnectionAsync(tcpClient);
                 }
                 catch (ObjectDisposedException)
                 {
-                    // Server has been stopped
                     break;
                 }
                 catch (Exception ex)
@@ -93,9 +99,6 @@ namespace Server.Core
             }
         }
 
-        /// <summary>
-        /// Handle a new client connection
-        /// </summary>
         private async Task HandleClientConnectionAsync(TcpClient tcpClient)
         {
             string clientId = Guid.NewGuid().ToString().Substring(0, 8);
@@ -108,7 +111,6 @@ namespace Server.Core
                     _connectedClients.Add(clientHandler);
                 }
 
-                // Subscribe to incoming messages from this client
                 clientHandler.MessageReceived += async (s, e) =>
                 {
                     try
@@ -124,7 +126,6 @@ namespace Server.Core
                     }
                 };
 
-                // When client disconnects, cleanup rooms and username map
                 clientHandler.Disconnected += (s, e) =>
                 {
                     try
@@ -135,8 +136,8 @@ namespace Server.Core
                                 _usernames.Remove(clientHandler.ClientId);
                         }
 
-                        // Remove player from any rooms
                         _roomManager.PlayerLeft(clientHandler.ClientId);
+                        _matchmaking.PlayerLeaveLobby(clientHandler.ClientId);
                     }
                     catch (Exception ex)
                     {
@@ -147,15 +148,13 @@ namespace Server.Core
                 IPEndPoint? remoteEndPoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
                 LogInfo($"[{clientId}] Client connected from {remoteEndPoint?.Address}:{remoteEndPoint?.Port}");
 
-                // Raise ClientConnected event
-                ClientConnected?.Invoke(this, new ClientConnectedEventArgs 
-                { 
+                ClientConnected?.Invoke(this, new ClientConnectedEventArgs
+                {
                     ClientId = clientId,
                     RemoteAddress = remoteEndPoint?.Address.ToString(),
                     RemotePort = remoteEndPoint?.Port ?? 0
                 });
 
-                // Keep the connection alive and monitor for disconnection
                 await clientHandler.HandleAsync();
             }
             catch (Exception ex)
@@ -164,7 +163,6 @@ namespace Server.Core
             }
             finally
             {
-                // Remove client from list when disconnected
                 lock (_clientLock)
                 {
                     var clientHandler = _connectedClients.FirstOrDefault(c => c.ClientId == clientId);
@@ -184,106 +182,112 @@ namespace Server.Core
             switch (packet.Command)
             {
                 case CommandType.LOGIN:
-                {
-                    // packet.Data expected to be username
-                    var username = packet.Data ?? string.Empty;
-                    lock (_clientLock)
                     {
-                        _usernames[client.ClientId] = username;
+                        var username = packet.Data ?? string.Empty;
+                        lock (_clientLock)
+                        {
+                            _usernames[client.ClientId] = username;
+                        }
+                        _matchmaking.PlayerJoinLobby(client.ClientId, username);
+
+                        var ack = PacketHelper.Create(CommandType.SUCCESS, "Logged in", client.ClientId);
+                        await client.SendPacketAsync(ack);
+                        break;
                     }
 
-                    // Acknowledge
-                    var ack = PacketHelper.Create(CommandType.SUCCESS, "Logged in", client.ClientId);
-                    await client.SendPacketAsync(ack);
-                    break;
-                }
+                case CommandType.INVITE:
+                    {
+                        _matchmaking.SendInvite(client.ClientId, packet.Data ?? "");
+                        break;
+                    }
+
+                case CommandType.INVITE_RESPONSE:
+                    {
+                        _matchmaking.RespondToInvite(client.ClientId, packet.Data == "true");
+                        break;
+                    }
 
                 case CommandType.CREATE_ROOM:
-                {
-                    var roomName = packet.Data ?? "Room";
-                    var room = _roomManager.CreateRoom(roomName, client.ClientId);
-
-                    var resp = PacketHelper.Create(CommandType.ROOM_CREATED, room.Info, client.ClientId);
-                    await client.SendPacketAsync(resp);
-
-                    // Broadcast updated room list
-                    var list = _roomManager.GetRoomList().ToList();
-                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
-                    await BroadcastPacketAsync(listPkt);
-                    break;
-                }
-
-                case CommandType.GET_ROOM_LIST:
-                {
-                    var list = _roomManager.GetRoomList().ToList();
-                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
-                    await client.SendPacketAsync(listPkt);
-                    break;
-                }
-
-                case CommandType.JOIN_ROOM:
-                {
-                    // packet.Data expected to be roomId
-                    var roomId = packet.Data ?? string.Empty;
-                    bool ok = _roomManager.TryJoinRoom(roomId, client.ClientId);
-                    if (ok)
                     {
-                        var room = _roomManager.GetRoomList().FirstOrDefault(r => r.RoomID == roomId);
-                        var resp = PacketHelper.Create(CommandType.ROOM_JOINED, room, client.ClientId);
+                        var roomName = packet.Data ?? "Room";
+                        var room = _roomManager.CreateRoom(roomName, client.ClientId);
+
+                        var resp = PacketHelper.Create(CommandType.ROOM_CREATED, room.Info, client.ClientId);
                         await client.SendPacketAsync(resp);
 
-                        // Notify other players in room
-                        if (room != null)
-                        {
-                            var otherId = room.Player1ID == client.ClientId ? room.Player2ID : room.Player1ID;
-                            if (!string.IsNullOrEmpty(otherId))
-                            {
-                                var otherClient = GetConnectedClients().FirstOrDefault(c => c.ClientId == otherId);
-                                if (otherClient != null)
-                                {
-                                    var notify = PacketHelper.Create(CommandType.PLAYER_JOINED, room, client.ClientId);
-                                    await otherClient.SendPacketAsync(notify);
-                                }
-                            }
-                        }
-                        // Broadcast updated room list
                         var list = _roomManager.GetRoomList().ToList();
                         var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
                         await BroadcastPacketAsync(listPkt);
+                        break;
                     }
-                    else
+
+                case CommandType.GET_ROOM_LIST:
                     {
-                        var err = PacketHelper.Create(CommandType.ROOM_FULL, "Room is full", client.ClientId);
-                        await client.SendPacketAsync(err);
+                        var list = _roomManager.GetRoomList().ToList();
+                        var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                        await client.SendPacketAsync(listPkt);
+                        break;
                     }
-                    break;
-                }
+
+                case CommandType.JOIN_ROOM:
+                    {
+                        var roomId = packet.Data ?? string.Empty;
+                        bool ok = _roomManager.TryJoinRoom(roomId, client.ClientId);
+                        if (ok)
+                        {
+                            var room = _roomManager.GetRoomList().FirstOrDefault(r => r.RoomID == roomId);
+                            var resp = PacketHelper.Create(CommandType.ROOM_JOINED, room, client.ClientId);
+                            await client.SendPacketAsync(resp);
+
+                            if (room != null)
+                            {
+                                var otherId = room.Player1ID == client.ClientId ? room.Player2ID : room.Player1ID;
+                                if (!string.IsNullOrEmpty(otherId))
+                                {
+                                    var otherClient = GetConnectedClients().FirstOrDefault(c => c.ClientId == otherId);
+                                    if (otherClient != null)
+                                    {
+                                        var notify = PacketHelper.Create(CommandType.PLAYER_JOINED, room, client.ClientId);
+                                        await otherClient.SendPacketAsync(notify);
+                                    }
+                                }
+                            }
+                            var list = _roomManager.GetRoomList().ToList();
+                            var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                            await BroadcastPacketAsync(listPkt);
+                        }
+                        else
+                        {
+                            var err = PacketHelper.Create(CommandType.ROOM_FULL, "Room is full", client.ClientId);
+                            await client.SendPacketAsync(err);
+                        }
+                        break;
+                    }
 
                 case CommandType.LEAVE_ROOM:
-                {
-                    _roomManager.PlayerLeft(client.ClientId);
-                    var ok = PacketHelper.Create(CommandType.SUCCESS, "Left room", client.ClientId);
-                    await client.SendPacketAsync(ok);
+                    {
+                        _roomManager.PlayerLeft(client.ClientId);
+                        var ok = PacketHelper.Create(CommandType.SUCCESS, "Left room", client.ClientId);
+                        await client.SendPacketAsync(ok);
 
-                    var list = _roomManager.GetRoomList().ToList();
-                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
-                    await BroadcastPacketAsync(listPkt);
-                    break;
-                }
+                        var list = _roomManager.GetRoomList().ToList();
+                        var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                        await BroadcastPacketAsync(listPkt);
+                        break;
+                    }
 
                 case CommandType.PING:
-                {
-                    var pong = PacketHelper.Create(CommandType.SUCCESS, "PONG", client.ClientId);
-                    await client.SendPacketAsync(pong);
-                    break;
-                }
+                    {
+                        var pong = PacketHelper.Create(CommandType.SUCCESS, "PONG", client.ClientId);
+                        await client.SendPacketAsync(pong);
+                        break;
+                    }
 
-                // Other commands (game-related) can be forwarded or handled here
                 default:
-                {
-                    LogInfo($"Received command {packet.Command} from {client.ClientId}");
-                    break;
-                }
+                    {
+                        LogInfo($"Received command {packet.Command} from {client.ClientId}");
+                        break;
+                    }
             }
         }
 
@@ -298,9 +302,6 @@ namespace Server.Core
             await Task.WhenAll(tasks);
         }
 
-        /// <summary>
-        /// Stop the server and close all client connections
-        /// </summary>
         public async Task StopAsync()
         {
             _isRunning = false;
@@ -312,14 +313,13 @@ namespace Server.Core
             {
                 _tcpListener?.Stop();
 
-                // Close all client connections
                 List<ClientHandler> clientsToDisconnect;
                 lock (_clientLock)
                 {
                     clientsToDisconnect = new List<ClientHandler>(_connectedClients);
                     _connectedClients.Clear();
                 }
-                
+
                 foreach (var client in clientsToDisconnect)
                 {
                     await client.DisconnectAsync();
@@ -333,9 +333,6 @@ namespace Server.Core
             }
         }
 
-        /// <summary>
-        /// Get the list of connected clients
-        /// </summary>
         public List<ClientHandler> GetConnectedClients()
         {
             lock (_clientLock)
@@ -344,9 +341,6 @@ namespace Server.Core
             }
         }
 
-        /// <summary>
-        /// Get the count of connected clients
-        /// </summary>
         public int GetClientCount()
         {
             lock (_clientLock)
@@ -355,9 +349,6 @@ namespace Server.Core
             }
         }
 
-        /// <summary>
-        /// Broadcast message to all connected clients
-        /// </summary>
         public async Task BroadcastAsync(string message)
         {
             try
@@ -378,9 +369,6 @@ namespace Server.Core
             }
         }
 
-        /// <summary>
-        /// Send message to a specific client
-        /// </summary>
         public async Task SendToClientAsync(string clientId, string message)
         {
             try
@@ -401,7 +389,6 @@ namespace Server.Core
             }
         }
 
-        // Logging methods
         private void LogInfo(string message)
         {
             Console.ForegroundColor = ConsoleColor.Green;
@@ -427,7 +414,6 @@ namespace Server.Core
         public int ServerPort => _serverPort;
     }
 
-    // Event args classes
     public class ClientConnectedEventArgs : EventArgs
     {
         public string? ClientId { get; set; }

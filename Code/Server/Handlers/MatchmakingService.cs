@@ -9,9 +9,10 @@ namespace Server.Handlers
         private readonly LobbySession _lobby = new();
         private readonly Dictionary<string, InviteDto> _pendingInvites = new();
 
-        public event Action<string, object> SendToClient;
-        public event Action<object> BroadcastToLobby;
-        public event Func<string, string, string> CreateGameRoom;
+        public event Action<string, object>? SendToClient;
+        public event Action<object>? BroadcastToLobby;
+        public event Func<string, string, string>? CreateGameRoom;
+        public event Action<string>? OnError;
 
         public bool PlayerJoinLobby(string playerId, string playerName)
         {
@@ -51,7 +52,14 @@ namespace Server.Handlers
             var to = _lobby.GetPlayer(toId);
 
             if (from == null || to == null) return false;
+            if (from.Status != PlayerStatus.Online) return false;
             if (to.Status != PlayerStatus.Online) return false;
+
+            if (_pendingInvites.ContainsKey(toId))
+            {
+                SendToClient?.Invoke(fromId, new NotifyDto { Type = "PLAYER_BUSY" });
+                return false;
+            }
 
             var invite = new InviteDto
             {
@@ -81,7 +89,7 @@ namespace Server.Handlers
             {
                 _lobby.UpdateStatus(invite.FromPlayerId, PlayerStatus.Online);
                 _lobby.UpdateStatus(invite.ToPlayerId, PlayerStatus.Online);
-                SendToClient?.Invoke(invite.FromPlayerId, new { Type = "INVITE_DECLINED" });
+                SendToClient?.Invoke(invite.FromPlayerId, new NotifyDto { Type = "INVITE_DECLINED" });
                 BroadcastLobbyUpdate();
             }
         }
@@ -92,7 +100,13 @@ namespace Server.Handlers
             var p2 = _lobby.GetPlayer(player2Id);
             if (p1 == null || p2 == null) return;
 
-            string roomId = CreateGameRoom?.Invoke(player1Id, player2Id) ?? Guid.NewGuid().ToString();
+            if (CreateGameRoom == null)
+            {
+                OnError?.Invoke("GameRoom service chưa được kết nối!");
+                return;
+            }
+
+            string roomId = CreateGameRoom.Invoke(player1Id, player2Id);
 
             _lobby.UpdateStatus(player1Id, PlayerStatus.InGame);
             _lobby.UpdateStatus(player2Id, PlayerStatus.InGame);
@@ -116,7 +130,7 @@ namespace Server.Handlers
             if (_pendingInvites.TryGetValue(playerId, out var invite))
             {
                 _lobby.UpdateStatus(invite.FromPlayerId, PlayerStatus.Online);
-                SendToClient?.Invoke(invite.FromPlayerId, new { Type = "INVITE_CANCELLED" });
+                SendToClient?.Invoke(invite.FromPlayerId, new NotifyDto { Type = "INVITE_CANCELLED" });
                 _pendingInvites.Remove(playerId);
             }
 
@@ -124,7 +138,7 @@ namespace Server.Handlers
             foreach (var kv in asInviter)
             {
                 _lobby.UpdateStatus(kv.Value.ToPlayerId, PlayerStatus.Online);
-                SendToClient?.Invoke(kv.Value.ToPlayerId, new { Type = "INVITE_CANCELLED" });
+                SendToClient?.Invoke(kv.Value.ToPlayerId, new NotifyDto { Type = "INVITE_CANCELLED" });
                 _pendingInvites.Remove(kv.Key);
             }
         }
