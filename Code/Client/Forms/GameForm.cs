@@ -23,6 +23,7 @@ namespace Client.Forms
         private string _lastErrorMessage = "";
         private DateTime _lastErrorAt = DateTime.MinValue;
         private bool _drawRequestPending;
+        private bool _returningToLobbyAfterEnd;
 
         public GameForm()
         {
@@ -213,6 +214,7 @@ namespace Client.Forms
             {
                 _endMessageShown = true;
                 MessageBox.Show(game.ResultText, "Ket thuc van dau");
+                ReturnToLobby();
             }
         }
 
@@ -341,6 +343,15 @@ namespace Client.Forms
         private async void btnBack_Click(object? sender, EventArgs e)
         {
             await _service.SendAsync(CommandType.RETURN_TO_LOBBY, "");
+            ReturnToLobby();
+        }
+
+        private void ReturnToLobby()
+        {
+            if (_returningToLobbyAfterEnd)
+                return;
+
+            _returningToLobbyAfterEnd = true;
             DetachEvents();
             var lobby = new LobbyForm();
             lobby.Show();
