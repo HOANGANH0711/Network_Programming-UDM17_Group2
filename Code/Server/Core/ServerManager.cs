@@ -29,6 +29,10 @@ namespace Server.Core
         private readonly object _clientLock = new object();
         private readonly GameRoomManager _roomManager = new GameRoomManager();
         private readonly Dictionary<string, string> _usernames = new Dictionary<string, string>();
+        private readonly TimeSpan _clientTimeout = TimeSpan.FromSeconds(60);
+        private readonly TimeSpan _watchdogInterval = TimeSpan.FromSeconds(15);
+        private Task? _watchdogTask;
+        private CancellationTokenSource? _watchdogCts;
 
         public event EventHandler<ClientConnectedEventArgs>? ClientConnected;
         public event EventHandler<ClientDisconnectedEventArgs>? ClientDisconnected;
@@ -39,6 +43,78 @@ namespace Server.Core
             _connectedClients = new List<ClientHandler>();
             _isRunning = false;
             _cancellationTokenSource = new CancellationTokenSource();
+        }
+
+        private ClientHandler? GetClientById(string clientId)
+        {
+            lock (_clientLock)
+            {
+                return _connectedClients.FirstOrDefault(c => c.ClientId == clientId);
+            }
+        }
+
+        private async Task WatchdogLoopAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await Task.Delay(_watchdogInterval, cancellationToken);
+
+                    var now = DateTime.UtcNow;
+                    var timedOut = new List<ClientHandler>();
+
+                    lock (_clientLock)
+                    {
+                        foreach (var c in _connectedClients)
+                        {
+                            try
+                            {
+                                if (!c.IsConnected) continue;
+                                var last = c.LastActivity;
+                                if (now - last > _clientTimeout)
+                                {
+                                    timedOut.Add(c);
+                                }
+                            }
+                            catch
+                            {
+                                // ignore per-client errors
+                            }
+                        }
+                    }
+
+                    foreach (var c in timedOut)
+                    {
+                        LogWarning($"Client {c.ClientId} timed out, disconnecting.");
+                        try
+                        {
+                            await c.DisconnectAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            LogError($"Error disconnecting timed out client {c.ClientId}: {ex.Message}");
+                        }
+
+                        // cleanup username mapping and rooms
+                        lock (_clientLock)
+                        {
+                            var mapping = _usernames.FirstOrDefault(kv => kv.Key == c.ClientId);
+                            if (!string.IsNullOrEmpty(mapping.Key) && _usernames.ContainsKey(mapping.Key))
+                                _usernames.Remove(mapping.Key);
+                        }
+                        _roomManager.PlayerLeft(c.ClientId);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // expected
+            }
+            catch (Exception ex)
+            {
+                LogError($"Watchdog error: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -56,7 +132,14 @@ namespace Server.Core
                 LogInfo("Waiting for client connections...");
 
                 // Accept client connections in a background task
-                await AcceptClientsAsync();
+                // start accepting clients
+                var acceptTask = AcceptClientsAsync();
+
+                // start watchdog loop
+                _watchdogCts = new CancellationTokenSource();
+                _watchdogTask = Task.Run(() => WatchdogLoopAsync(_watchdogCts.Token));
+
+                await acceptTask;
             }
             catch (Exception ex)
             {
@@ -278,6 +361,29 @@ namespace Server.Core
                     break;
                 }
 
+                case CommandType.GAME_END:
+                {
+                    // client signals game end; remove from room and cleanup
+                    _roomManager.PlayerLeft(client.ClientId);
+                    var list = _roomManager.GetRoomList().ToList();
+                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                    await BroadcastPacketAsync(listPkt);
+                    break;
+                }
+
+                case CommandType.OPPONENT_DISCONNECTED:
+                {
+                    // opponent disconnected unexpectedly: remove player from room and notify
+                    _roomManager.PlayerLeft(client.ClientId);
+                    var notify = PacketHelper.Create(CommandType.OPPONENT_DISCONNECTED, client.ClientId, client.ClientId);
+                    await client.SendPacketAsync(notify);
+
+                    var list = _roomManager.GetRoomList().ToList();
+                    var listPkt = PacketHelper.Create(CommandType.ROOM_LIST, list);
+                    await BroadcastPacketAsync(listPkt);
+                    break;
+                }
+
                 // Other commands (game-related) can be forwarded or handled here
                 default:
                 {
@@ -311,6 +417,15 @@ namespace Server.Core
             try
             {
                 _tcpListener?.Stop();
+
+                // stop watchdog
+                try
+                {
+                    _watchdogCts?.Cancel();
+                    if (_watchdogTask != null)
+                        await _watchdogTask;
+                }
+                catch { }
 
                 // Close all client connections
                 List<ClientHandler> clientsToDisconnect;

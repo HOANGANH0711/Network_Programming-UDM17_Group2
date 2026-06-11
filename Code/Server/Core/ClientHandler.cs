@@ -22,6 +22,7 @@ namespace Server.Core
         private StreamWriter? _writer;
         private readonly object _sendLock = new object();
         private string _clientId;
+        private DateTime _lastActivity;
         private bool _isConnected;
         private CancellationTokenSource _cancellationTokenSource;
 
@@ -37,6 +38,7 @@ namespace Server.Core
             _reader = new StreamReader(_networkStream, Encoding.UTF8);
             _writer = new StreamWriter(_networkStream, Encoding.UTF8) { AutoFlush = true };
             _isConnected = true;
+            _lastActivity = DateTime.UtcNow;
             _cancellationTokenSource = new CancellationTokenSource();
         }
 
@@ -78,6 +80,8 @@ namespace Server.Core
                     try
                     {
                         var packet = PacketHelper.Deserialize(line);
+                        // update last activity on any incoming data
+                        _lastActivity = DateTime.UtcNow;
                         if (packet != null)
                         {
                             MessageReceived?.Invoke(this, new MessageReceivedEventArgs { Packet = packet });
@@ -163,6 +167,7 @@ namespace Server.Core
 
         public string ClientId => _clientId;
         public bool IsConnected => _isConnected;
+        public DateTime LastActivity => _lastActivity;
     }
 
     // Event args class

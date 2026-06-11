@@ -16,6 +16,11 @@ namespace Server.Rooms
         public RoomDTO Info { get; }
 
         public bool IsFull => !string.IsNullOrEmpty(Info.Player1ID) && !string.IsNullOrEmpty(Info.Player2ID);
+        public bool IsPlaying
+        {
+            get { return Info.IsPlaying; }
+            private set { Info.IsPlaying = value; }
+        }
 
         public GameRoom(string roomId, string roomName, string ownerId)
         {
@@ -63,6 +68,26 @@ namespace Server.Rooms
                 if (Info.Player2ID == playerId) Info.Player2ID = string.Empty;
 
                 Info.IsFull = IsFull;
+                // If players left, stop playing
+                if (string.IsNullOrEmpty(Info.Player1ID) || string.IsNullOrEmpty(Info.Player2ID))
+                    IsPlaying = false;
+            }
+        }
+
+        public void StartGame()
+        {
+            lock (_lock)
+            {
+                IsPlaying = true;
+            }
+        }
+
+        public void EndGame()
+        {
+            lock (_lock)
+            {
+                IsPlaying = false;
+                // Optionally keep players to allow rematch; cleanup is managed by GameRoomManager.PlayerLeft
             }
         }
 
