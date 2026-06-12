@@ -1,29 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Server.GameLogic
+﻿namespace Server.GameLogic
 {
-    public enum CellState
+    public enum CellValue
     {
-        Empty,  // O trong
-        X,      // Nguoi choi 1
-        O       // Nguoi choi 2
+        Empty = 0,
+        X = 1,
+        O = 2
     }
 
-    public class Cell
+    public static class CellValueExtensions
     {
-        public int Row { get; set; }
-        public int Col { get; set; }
-        public CellState State { get; set; }
+        public static CellValue FromSymbol(string symbol) =>
+            symbol == "X" ? CellValue.X : CellValue.O;
 
-        public Cell(int row, int col)
-        {
-            Row = row;
-            Col = col;
-            State = CellState.Empty;
-        }
+        public static string ToSymbol(this CellValue value) =>
+            value == CellValue.X ? "X" : value == CellValue.O ? "O" : "";
+
+        public static CellValue Opponent(this CellValue value) =>
+            value == CellValue.X ? CellValue.O : CellValue.X;
     }
 }

@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Shared.DTO;
 using Shared.Enums;
 using Shared.Models;
+using Server.GameLogic;
 
 namespace Server.Core
 {
@@ -552,7 +553,7 @@ namespace Server.Core
         public string PlayerOName { get; private set; } = "";
         public string CurrentTurnID { get; private set; } = "";
         public string CurrentSymbol { get; private set; } = "X";
-        public int[][] Board { get; } = Enumerable.Range(0, 15).Select(_ => new int[15]).ToArray();
+        public GameLogic.Board Board { get; } = new GameLogic.Board();
         public int TimeRemaining { get; set; }
         public int TurnSeconds { get; private set; }
         public bool IsGameOver { get; set; }
@@ -560,9 +561,9 @@ namespace Server.Core
         public string ResultText { get; set; } = "";
         public bool IsBotGame { get; private set; }
         public string BotDifficulty { get; private set; } = "Easy";
-        public List<MoveRecordDto> Moves { get; } = new List<MoveRecordDto>();
+        public List<GameLogic.Move> Moves { get; } = new List<GameLogic.Move>();
         private Timer? _timer;
-        private readonly Random _random = new Random();
+        private readonly GameLogic.GameService _gameService = new GameLogic.GameService();
 
         public static ActiveGame CreateOnline(string xId, string xName, string oId, string oName, int turnSeconds)
         {
@@ -610,11 +611,11 @@ namespace Server.Core
 
         public bool PlaceMove(string playerId, string symbol, int row, int col)
         {
-            if (row < 0 || row >= 15 || col < 0 || col >= 15 || Board[row][col] != 0)
+            var value = GameLogic.CellValueExtensions.FromSymbol(symbol);
+            if (!Board.Place(row, col, value))
                 return false;
 
-            Board[row][col] = symbol == "X" ? 1 : 2;
-            Moves.Add(new MoveRecordDto { Row = row, Col = col, PlayerID = playerId, Symbol = symbol });
+            Moves.Add(new GameLogic.Move { Row = row, Col = col, PlayerID = playerId, Symbol = symbol });
             TimeRemaining = TurnSeconds;
             return true;
         }
@@ -626,296 +627,19 @@ namespace Server.Core
             TimeRemaining = TurnSeconds;
         }
 
-        public bool HasWinner(int row, int col, string symbol)
-        {
-            var value = symbol == "X" ? 1 : 2;
-            var directions = new[] { (0, 1), (1, 0), (1, 1), (1, -1) };
-            foreach (var (dr, dc) in directions)
-            {
-                var count = 1 + Count(row, col, dr, dc, value) + Count(row, col, -dr, -dc, value);
-                if (count >= 5)
-                    return true;
-            }
-            return false;
-        }
+        public bool HasWinner(int row, int col, string symbol) =>
+        GameLogic.WinChecker.HasWinner(Board, row, col, symbol);
 
-        private int Count(int row, int col, int dr, int dc, int value)
-        {
-            var count = 0;
-            var r = row + dr;
-            var c = col + dc;
-            while (r >= 0 && r < 15 && c >= 0 && c < 15 && Board[r][c] == value)
-            {
-                count++;
-                r += dr;
-                c += dc;
-            }
-            return count;
-        }
+        public bool IsBoardFull() => Board.IsFull();
 
-        public bool IsBoardFull() => Board.All(row => row.All(cell => cell != 0));
 
         public (int row, int col) ChooseBotMove()
         {
             var botSymbol = SymbolOf(BotId);
-            var humanSymbol = botSymbol == "X" ? "O" : "X";
-            if (Moves.Count == 0)
-                return (7, 7);
-
-            if (BotDifficulty != "Easy")
-            {
-                var win = FindFinishingMove(botSymbol);
-                if (win.row >= 0)
-                    return win;
-            }
-
-            if (BotDifficulty != "Easy")
-            {
-                var block = FindFinishingMove(humanSymbol);
-                if (block.row >= 0)
-                    return block;
-            }
-
-            if (BotDifficulty == "Hard")
-                return ChooseHardMove(botSymbol, humanSymbol);
-
-            if (BotDifficulty == "Medium")
-                return ChooseBestHeuristicMove(botSymbol, humanSymbol);
-
-            var candidates = EmptyCellsNearMoves().ToList();
-            if (candidates.Count == 0)
-                candidates.Add((7, 7));
-            return candidates[_random.Next(candidates.Count)];
+            return _gameService.ChooseBotMove(Board, Moves, botSymbol, BotDifficulty);
         }
 
-        private (int row, int col) FindFinishingMove(string symbol)
-        {
-            foreach (var (row, col) in CandidateMoves(2, 32))
-            {
-                Board[row][col] = symbol == "X" ? 1 : 2;
-                var ok = HasWinner(row, col, symbol);
-                Board[row][col] = 0;
-                if (ok)
-                    return (row, col);
-            }
-            return (-1, -1);
-        }
-
-        private IEnumerable<(int row, int col)> EmptyCellsNearMoves()
-        {
-            if (Moves.Count == 0)
-            {
-                yield return (7, 7);
-                yield break;
-            }
-
-            var seen = new HashSet<string>();
-            foreach (var move in Moves)
-            {
-                for (var dr = -1; dr <= 1; dr++)
-                    for (var dc = -1; dc <= 1; dc++)
-                    {
-                        var r = move.Row + dr;
-                        var c = move.Col + dc;
-                        var key = $"{r}:{c}";
-                        if (r >= 0 && r < 15 && c >= 0 && c < 15 && Board[r][c] == 0 && seen.Add(key))
-                            yield return (r, c);
-                    }
-            }
-        }
-
-        private (int row, int col) ChooseBestHeuristicMove(string botSymbol, string humanSymbol)
-        {
-            return CandidateMoves(2, 18)
-                .OrderByDescending(move => ScoreCandidate(move.row, move.col, botSymbol, humanSymbol))
-                .FirstOrDefault((-1, -1));
-        }
-
-        private (int row, int col) ChooseHardMove(string botSymbol, string humanSymbol)
-        {
-            var candidates = CandidateMoves(2, 14).ToList();
-            if (candidates.Count == 0)
-                return (7, 7);
-
-            var botValue = SymbolValue(botSymbol);
-            var bestMove = candidates[0];
-            var bestScore = int.MinValue;
-
-            foreach (var move in candidates)
-            {
-                Board[move.row][move.col] = botValue;
-                var score = HasWinner(move.row, move.col, botSymbol)
-                    ? 50_000_000
-                    : Minimax(3, false, botSymbol, humanSymbol, int.MinValue / 2, int.MaxValue / 2);
-                Board[move.row][move.col] = 0;
-
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestMove = move;
-                }
-            }
-
-            return bestMove;
-        }
-
-        private int Minimax(int depth, bool maximizing, string botSymbol, string humanSymbol, int alpha, int beta)
-        {
-            if (depth == 0 || IsBoardFull())
-                return EvaluateBoard(botSymbol, humanSymbol);
-
-            var symbol = maximizing ? botSymbol : humanSymbol;
-            var value = SymbolValue(symbol);
-            var moves = CandidateMoves(2, depth >= 3 ? 12 : 10).ToList();
-            if (moves.Count == 0)
-                return EvaluateBoard(botSymbol, humanSymbol);
-
-            if (maximizing)
-            {
-                var best = int.MinValue / 2;
-                foreach (var move in moves)
-                {
-                    Board[move.row][move.col] = value;
-                    var score = HasWinner(move.row, move.col, symbol)
-                        ? 40_000_000 + depth
-                        : Minimax(depth - 1, false, botSymbol, humanSymbol, alpha, beta);
-                    Board[move.row][move.col] = 0;
-
-                    best = Math.Max(best, score);
-                    alpha = Math.Max(alpha, best);
-                    if (beta <= alpha)
-                        break;
-                }
-                return best;
-            }
-
-            var worst = int.MaxValue / 2;
-            foreach (var move in moves)
-            {
-                Board[move.row][move.col] = value;
-                var score = HasWinner(move.row, move.col, symbol)
-                    ? -40_000_000 - depth
-                    : Minimax(depth - 1, true, botSymbol, humanSymbol, alpha, beta);
-                Board[move.row][move.col] = 0;
-
-                worst = Math.Min(worst, score);
-                beta = Math.Min(beta, worst);
-                if (beta <= alpha)
-                    break;
-            }
-            return worst;
-        }
-
-        private IEnumerable<(int row, int col)> CandidateMoves(int radius, int limit)
-        {
-            if (Moves.Count == 0)
-                return new[] { (7, 7) };
-
-            var seen = new HashSet<string>();
-            var moves = new List<(int row, int col)>();
-            foreach (var move in Moves)
-            {
-                for (var dr = -radius; dr <= radius; dr++)
-                    for (var dc = -radius; dc <= radius; dc++)
-                    {
-                        var r = move.Row + dr;
-                        var c = move.Col + dc;
-                        var key = $"{r}:{c}";
-                        if (r >= 0 && r < 15 && c >= 0 && c < 15 && Board[r][c] == 0 && seen.Add(key))
-                            moves.Add((r, c));
-                    }
-            }
-
-            return moves
-                .OrderByDescending(move => ScoreCandidate(move.row, move.col, SymbolOf(BotId), SymbolOf(BotId) == "X" ? "O" : "X"))
-                .ThenBy(move => Math.Abs(move.row - 7) + Math.Abs(move.col - 7))
-                .Take(limit)
-                .ToList();
-        }
-
-        private int ScoreCandidate(int row, int col, string botSymbol, string humanSymbol)
-        {
-            var botValue = SymbolValue(botSymbol);
-            var humanValue = SymbolValue(humanSymbol);
-
-            Board[row][col] = botValue;
-            var attack = EvaluatePoint(row, col, botValue);
-            Board[row][col] = humanValue;
-            var defense = EvaluatePoint(row, col, humanValue);
-            Board[row][col] = 0;
-
-            return attack + defense * 2;
-        }
-
-        private int EvaluateBoard(string botSymbol, string humanSymbol)
-        {
-            return EvaluatePlayer(SymbolValue(botSymbol)) - EvaluatePlayer(SymbolValue(humanSymbol)) * 2;
-        }
-
-        private int EvaluatePlayer(int value)
-        {
-            var score = 0;
-            for (var r = 0; r < 15; r++)
-                for (var c = 0; c < 15; c++)
-                    if (Board[r][c] == value)
-                        score += EvaluatePoint(r, c, value);
-            return score;
-        }
-
-        private int EvaluatePoint(int row, int col, int value)
-        {
-            var score = 0;
-            var directions = new[] { (0, 1), (1, 0), (1, 1), (1, -1) };
-            foreach (var (dr, dc) in directions)
-            {
-                var forward = CountLine(row, col, dr, dc, value, out var openForward);
-                var backward = CountLine(row, col, -dr, -dc, value, out var openBackward);
-                var length = 1 + forward + backward;
-                var openEnds = (openForward ? 1 : 0) + (openBackward ? 1 : 0);
-                score += ScorePattern(length, openEnds);
-            }
-            return score;
-        }
-
-        private int CountLine(int row, int col, int dr, int dc, int value, out bool openEnd)
-        {
-            var count = 0;
-            var r = row + dr;
-            var c = col + dc;
-            while (r >= 0 && r < 15 && c >= 0 && c < 15 && Board[r][c] == value)
-            {
-                count++;
-                r += dr;
-                c += dc;
-            }
-
-            openEnd = r >= 0 && r < 15 && c >= 0 && c < 15 && Board[r][c] == 0;
-            return count;
-        }
-
-        private static int ScorePattern(int length, int openEnds)
-        {
-            if (length >= 5)
-                return 10_000_000;
-            if (length == 4 && openEnds == 2)
-                return 1_000_000;
-            if (length == 4 && openEnds == 1)
-                return 120_000;
-            if (length == 3 && openEnds == 2)
-                return 45_000;
-            if (length == 3 && openEnds == 1)
-                return 5_000;
-            if (length == 2 && openEnds == 2)
-                return 1_200;
-            if (length == 2 && openEnds == 1)
-                return 150;
-            if (length == 1 && openEnds == 2)
-                return 20;
-            return 1;
-        }
-
-        private static int SymbolValue(string symbol) => symbol == "X" ? 1 : 2;
-
+       
         public GameStateDto ToDto(string viewerId)
         {
             return new GameStateDto
@@ -928,13 +652,19 @@ namespace Server.Core
                 CurrentTurnID = CurrentTurnID,
                 CurrentSymbol = CurrentSymbol,
                 YourSymbol = SymbolOf(viewerId),
-                Board = Board.Select(row => row.ToArray()).ToArray(),
+                Board = Board.GetSnapshot(),
                 TimeRemaining = TimeRemaining,
                 TurnSeconds = TurnSeconds,
                 IsGameOver = IsGameOver,
                 WinnerID = WinnerID,
                 ResultText = ResultText,
-                Moves = Moves.ToList(),
+                Moves = Moves.Select(m => new MoveRecordDto
+                {
+                    Row = m.Row,
+                    Col = m.Col,
+                    PlayerID = m.PlayerID,
+                    Symbol = m.Symbol
+                }).ToList(),
                 IsBotGame = IsBotGame
             };
         }
@@ -949,7 +679,13 @@ namespace Server.Core
                 OpponentName = opponentName,
                 Result = result,
                 Mode = IsBotGame ? $"Bot {BotDifficulty}" : "Online",
-                Moves = Moves.ToList()
+                Moves = Moves.Select(m => new MoveRecordDto
+                {
+                    Row = m.Row,
+                    Col = m.Col,
+                    PlayerID = m.PlayerID,
+                    Symbol = m.Symbol
+                }).ToList(),
             };
         }
     }
