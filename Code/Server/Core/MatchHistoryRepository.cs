@@ -1,55 +1,54 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Server.GameLogic;
 using Shared.DTO;
-using System.Text.Json;
+using Shared.Models;
 
 namespace Server.Core
 {
     public class MatchHistoryRepository
     {
-        // File lưu lịch sử trận đấu
-        private string _filePath = "match_history.json";
+        private readonly object _lock = new object();
+        private readonly string _filePath;
+        private readonly List<HistoryItemDto> _items;
 
-        //Lay tat ca lich su tran dau 
-        public List<GameDTO> GetAll()
+        public MatchHistoryRepository()
         {
-            // neu file chua ton tai thi tra ve danh sach trong
-            if (!File.Exists(_filePath))
+            _filePath = Path.Combine(AppContext.BaseDirectory, "history_items.json");
+            _items = Load();
+        }
+
+        public List<HistoryItemDto> GetByPlayer(string playerId)
+        {
+            lock (_lock)
+                return _items.Where(h => h.GameID.StartsWith(playerId + "-", StringComparison.Ordinal)).ToList();
+        }
+
+        public void SaveGame(ActiveGame game, Func<string, string> getPlayerName)
+        {
+            lock (_lock)
             {
-                return new List<GameDTO>();
+                if (game.PlayerXID != ActiveGame.BotId)
+                    _items.Add(game.ToHistory(game.PlayerXID, getPlayerName(game.PlayerOID)));
+
+                if (game.PlayerOID != ActiveGame.BotId)
+                    _items.Add(game.ToHistory(game.PlayerOID, getPlayerName(game.PlayerXID)));
+
+                File.WriteAllText(_filePath, Serializer.Serialize(_items));
             }
-            var json = File.ReadAllText(_filePath);
-            return JsonSerializer.Deserialize<List<GameDTO>>(json) ?? new List<GameDTO>();
         }
 
-        // Lưu lịch sử trận đấu mới vào file
-        public void Save(GameDTO game)
+        private List<HistoryItemDto> Load()
         {
-            var list = GetAll();//lay danhs ach cu
-            list.Add(game);// them tran moi vao
+            try
+            {
+                if (!File.Exists(_filePath))
+                    return new List<HistoryItemDto>();
 
-            //Ghi lai toan o danh sach xuong file
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(list));
-            Console.WriteLine($"[History] Da luu lich su tran dau: {game.GameID}");
-        }
-
-        //Lay lich su theo PlayerID
-
-        public List<GameDTO> GetByPlayer(string playerID)
-        {
-            return GetAll()
-                .Where(g => g.Player1ID == playerID || g.Player2ID == playerID)
-                .ToList();
-        }
-
-        //lay lich su theo GameID
-        public GameDTO? GetByGameID (string gameID)
-        {
-            return GetAll()
-                .FirstOrDefault(g => g.GameID == gameID);
+                return Serializer.Deserialize<List<HistoryItemDto>>(File.ReadAllText(_filePath)) ?? new List<HistoryItemDto>();
+            }
+            catch
+            {
+                return new List<HistoryItemDto>();
+            }
         }
     }
 }
