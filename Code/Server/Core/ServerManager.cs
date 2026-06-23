@@ -1,22 +1,22 @@
 using System.Net;
 using System.Net.Sockets;
-using Server.GameLogic;
-using Server.Handlers;
 using Shared.DTO;
 using Shared.Enums;
 using Shared.Models;
+using Server.GameLogic;
 
 namespace Server.Core
 {
     public class ServerManager
     {
         private readonly int _serverPort;
-        private readonly object _clientLock = new object();
-        private readonly object _gameLock = new object();
+        private readonly object _lock = new object();
         private readonly List<ClientHandler> _connectedClients = new List<ClientHandler>();
+        private readonly Dictionary<string, UserDTO> _users = new Dictionary<string, UserDTO>();
+        private readonly Dictionary<string, InviteDto> _pendingInvites = new Dictionary<string, InviteDto>();
         private readonly Dictionary<string, ActiveGame> _games = new Dictionary<string, ActiveGame>();
-        private readonly MatchmakingService _matchmaking = new MatchmakingService();
-        private readonly MatchHistoryRepository _historyRepository = new MatchHistoryRepository();
+        private readonly List<HistoryItemDto> _history = new List<HistoryItemDto>();
+        private readonly string _historyPath = Path.Combine(AppContext.BaseDirectory, "history_items.json");
         private TcpListener? _tcpListener;
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         private bool _isRunning;
@@ -27,6 +27,7 @@ namespace Server.Core
         public ServerManager(int port = 5000)
         {
             _serverPort = port;
+            LoadHistory();
         }
 
         public async Task StartAsync()
@@ -54,7 +55,6 @@ namespace Server.Core
                 {
                     if (_tcpListener == null)
                         break;
-
                     var tcpClient = await _tcpListener.AcceptTcpClientAsync();
                     _ = HandleClientConnectionAsync(tcpClient);
                 }
@@ -73,7 +73,7 @@ namespace Server.Core
         {
             var clientId = Guid.NewGuid().ToString("N").Substring(0, 8);
             var clientHandler = new ClientHandler(tcpClient, clientId);
-            lock (_clientLock)
+            lock (_lock)
                 _connectedClients.Add(clientHandler);
 
             clientHandler.MessageReceived += async (_, e) =>
@@ -151,18 +151,36 @@ namespace Server.Core
 
         private async Task LoginAsync(ClientHandler client, string username)
         {
-            _matchmaking.Login(client.ClientId, username);
+            username = string.IsNullOrWhiteSpace(username) ? $"Player {client.ClientId}" : username.Trim();
+            lock (_lock)
+            {
+                _users[client.ClientId] = new UserDTO
+                {
+                    UserID = client.ClientId,
+                    UserName = username,
+                    IsOnline = true,
+                    IsInGame = false
+                };
+            }
+
             await client.SendPacketAsync(PacketHelper.Create(CommandType.SUCCESS, "Logged in", client.ClientId));
             await BroadcastLobbyAsync();
         }
 
         private async Task SendInviteAsync(ClientHandler client, string data)
         {
-            var request = Serializer.Deserialize<InviteDto>(data);
-            if (request == null)
+            var invite = Serializer.Deserialize<InviteDto>(data);
+            if (invite == null)
                 return;
 
-            var invite = _matchmaking.CreateInvite(client.ClientId, request);
+            lock (_lock)
+            {
+                invite.FromPlayerId = client.ClientId;
+                invite.FromPlayerName = GetName(client.ClientId);
+                invite.ToPlayerName = GetName(invite.ToPlayerId);
+                _pendingInvites[$"{invite.FromPlayerId}:{invite.ToPlayerId}"] = invite;
+            }
+
             var target = FindClient(invite.ToPlayerId);
             if (target != null)
                 await target.SendPacketAsync(PacketHelper.Create(CommandType.INVITE, invite, client.ClientId));
@@ -174,7 +192,13 @@ namespace Server.Core
             if (response == null)
                 return;
 
-            var invite = _matchmaking.TakeInvite(response.FromPlayerId, client.ClientId);
+            InviteDto? invite = null;
+            lock (_lock)
+            {
+                _pendingInvites.TryGetValue($"{response.FromPlayerId}:{client.ClientId}", out invite);
+                _pendingInvites.Remove($"{response.FromPlayerId}:{client.ClientId}");
+            }
+
             var inviter = FindClient(response.FromPlayerId);
             if (!response.Accepted)
             {
@@ -191,7 +215,7 @@ namespace Server.Core
         {
             var xId = invite.InviterSymbol == "X" ? invite.FromPlayerId : invite.ToPlayerId;
             var oId = invite.InviterSymbol == "X" ? invite.ToPlayerId : invite.FromPlayerId;
-            var game = ActiveGame.CreateOnline(xId, _matchmaking.GetName(xId), oId, _matchmaking.GetName(oId), invite.TurnSeconds);
+            var game = ActiveGame.CreateOnline(xId, GetName(xId), oId, GetName(oId), invite.TurnSeconds);
             AddGame(game);
             await BroadcastGameStateAsync(game, CommandType.GAME_START);
             game.StartTimer(() => _ = TickGameAsync(game.GameID));
@@ -204,14 +228,7 @@ namespace Server.Core
             var playerIsX = request.PlayerSymbol != "O";
             var xId = playerIsX ? client.ClientId : ActiveGame.BotId;
             var oId = playerIsX ? ActiveGame.BotId : client.ClientId;
-            var game = ActiveGame.CreateBot(
-                xId,
-                xId == client.ClientId ? _matchmaking.GetName(client.ClientId) : "Bot",
-                oId,
-                oId == client.ClientId ? _matchmaking.GetName(client.ClientId) : "Bot",
-                request.TurnSeconds,
-                request.Difficulty);
-
+            var game = ActiveGame.CreateBot(xId, xId == client.ClientId ? GetName(client.ClientId) : "Bot", oId, oId == client.ClientId ? GetName(client.ClientId) : "Bot", request.TurnSeconds, request.Difficulty);
             AddGame(game);
             await BroadcastGameStateAsync(game, CommandType.GAME_START);
             game.StartTimer(() => _ = TickGameAsync(game.GameID));
@@ -242,7 +259,7 @@ namespace Server.Core
             await BroadcastGameStateAsync(game, CommandType.GAME_STATE);
 
             if (game.HasWinner(move.Row, move.Col, symbol))
-                await EndGameAsync(game, client.ClientId, $"{_matchmaking.GetName(client.ClientId)} thang do du 5 quan lien tiep");
+                await EndGameAsync(game, client.ClientId, $"{GetName(client.ClientId)} thang do du 5 quan lien tiep");
             else if (game.IsBoardFull())
                 await EndGameAsync(game, "", "Hoa do ban co day");
             else
@@ -286,7 +303,7 @@ namespace Server.Core
             {
                 var loser = game.CurrentTurnID;
                 var winner = game.OpponentOf(loser);
-                await EndGameAsync(game, winner, $"{_matchmaking.GetName(loser)} het thoi gian va bi xu thua");
+                await EndGameAsync(game, winner, $"{GetName(loser)} het thoi gian va bi xu thua");
                 return;
             }
 
@@ -297,7 +314,7 @@ namespace Server.Core
         {
             var game = GetGameByPlayer(client.ClientId);
             if (game != null)
-                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{_matchmaking.GetName(client.ClientId)} dau hang");
+                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{GetName(client.ClientId)} dau hang");
         }
 
         private async Task EndGameAsync(ActiveGame? game, string winnerId, string result)
@@ -310,9 +327,12 @@ namespace Server.Core
             game.ResultText = result;
             game.StopTimer();
 
-            _matchmaking.MarkInGame(game.PlayerXID, false);
-            _matchmaking.MarkInGame(game.PlayerOID, false);
-            _historyRepository.SaveGame(game, _matchmaking.GetName);
+            lock (_lock)
+            {
+                MarkInGame(game.PlayerXID, false);
+                MarkInGame(game.PlayerOID, false);
+                SaveHistory(game);
+            }
 
             await BroadcastGameStateAsync(game, CommandType.GAME_END);
             await BroadcastLobbyAsync();
@@ -339,7 +359,6 @@ namespace Server.Core
         {
             if (playerId == ActiveGame.BotId)
                 return;
-
             var client = FindClient(playerId);
             if (client != null)
                 await client.SendPacketAsync(PacketHelper.Create(command, game.ToDto(playerId)));
@@ -349,7 +368,6 @@ namespace Server.Core
         {
             if (playerId == ActiveGame.BotId)
                 return;
-
             var client = FindClient(playerId);
             if (client != null)
                 await client.SendPacketAsync(packet);
@@ -357,32 +375,36 @@ namespace Server.Core
 
         private async Task SendLobbyAsync(ClientHandler client)
         {
-            await client.SendPacketAsync(PacketHelper.Create(CommandType.PLAYER_LIST, _matchmaking.GetPlayers()));
+            await client.SendPacketAsync(PacketHelper.Create(CommandType.PLAYER_LIST, GetUsers()));
         }
 
         private async Task BroadcastLobbyAsync()
         {
-            var packet = PacketHelper.Create(CommandType.LOBBY_UPDATE, _matchmaking.GetPlayers());
+            var packet = PacketHelper.Create(CommandType.LOBBY_UPDATE, GetUsers());
             var clients = GetConnectedClients();
             await Task.WhenAll(clients.Select(c => c.SendPacketAsync(packet)));
         }
 
         private async Task SendHistoryAsync(ClientHandler client)
         {
-            await client.SendPacketAsync(PacketHelper.Create(CommandType.HISTORY_DATA, _historyRepository.GetByPlayer(client.ClientId)));
+            List<HistoryItemDto> items;
+            lock (_lock)
+                items = _history.Where(h => h.GameID.StartsWith(client.ClientId + "-", StringComparison.Ordinal)).ToList();
+            await client.SendPacketAsync(PacketHelper.Create(CommandType.HISTORY_DATA, items));
         }
 
         private async Task RemoveClientAsync(ClientHandler client)
         {
             ActiveGame? game;
-            lock (_clientLock)
+            lock (_lock)
+            {
                 _connectedClients.RemoveAll(c => c.ClientId == client.ClientId);
-
-            game = GetGameByPlayer(client.ClientId);
-            _matchmaking.Logout(client.ClientId);
+                _users.Remove(client.ClientId);
+                game = GetGameByPlayer(client.ClientId);
+            }
 
             if (game != null && !game.IsGameOver)
-                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{_matchmaking.GetName(client.ClientId)} mat ket noi");
+                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{GetName(client.ClientId)} mat ket noi");
 
             await BroadcastLobbyAsync();
             ClientDisconnected?.Invoke(this, new ClientDisconnectedEventArgs { ClientId = client.ClientId });
@@ -390,24 +412,70 @@ namespace Server.Core
 
         private void AddGame(ActiveGame game)
         {
-            lock (_gameLock)
+            lock (_lock)
+            {
                 _games[game.GameID] = game;
+                MarkInGame(game.PlayerXID, game.PlayerXID != ActiveGame.BotId);
+                MarkInGame(game.PlayerOID, game.PlayerOID != ActiveGame.BotId);
+            }
+        }
 
-            _matchmaking.MarkInGame(game.PlayerXID, game.PlayerXID != ActiveGame.BotId);
-            _matchmaking.MarkInGame(game.PlayerOID, game.PlayerOID != ActiveGame.BotId);
+        private void SaveHistory(ActiveGame game)
+        {
+            if (game.PlayerXID != ActiveGame.BotId)
+                _history.Add(game.ToHistory(game.PlayerXID, GetName(game.PlayerOID)));
+            if (game.PlayerOID != ActiveGame.BotId)
+                _history.Add(game.ToHistory(game.PlayerOID, GetName(game.PlayerXID)));
+            File.WriteAllText(_historyPath, Serializer.Serialize(_history));
+        }
+
+        private void LoadHistory()
+        {
+            try
+            {
+                if (File.Exists(_historyPath))
+                {
+                    var items = Serializer.Deserialize<List<HistoryItemDto>>(File.ReadAllText(_historyPath));
+                    if (items != null)
+                        _history.AddRange(items);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"Could not load history: {ex.Message}");
+            }
+        }
+        private void MarkInGame(string playerId, bool isInGame)
+        {
+            if (_users.TryGetValue(playerId, out var user))
+                user.IsInGame = isInGame;
+        }
+
+        private List<UserDTO> GetUsers()
+        {
+            lock (_lock)
+                return _users.Values.Select(u => new UserDTO { UserID = u.UserID, UserName = u.UserName, IsOnline = u.IsOnline, IsInGame = u.IsInGame }).ToList();
+        }
+
+        private string GetName(string playerId)
+        {
+            if (playerId == ActiveGame.BotId)
+                return "Bot";
+            lock (_lock)
+                return _users.TryGetValue(playerId, out var user) ? user.UserName : playerId;
         }
 
         private ClientHandler? FindClient(string id) => GetConnectedClients().FirstOrDefault(c => c.ClientId == id);
 
         private ActiveGame? GetGame(string gameId)
         {
-            lock (_gameLock)
+            lock (_lock)
                 return _games.TryGetValue(gameId, out var game) ? game : null;
         }
 
         private ActiveGame? GetGameByPlayer(string playerId)
         {
-            lock (_gameLock)
+            lock (_lock)
                 return _games.Values.FirstOrDefault(g => !g.IsGameOver && (g.PlayerXID == playerId || g.PlayerOID == playerId));
         }
 
@@ -416,28 +484,22 @@ namespace Server.Core
             _isRunning = false;
             _cancellationTokenSource.Cancel();
             _tcpListener?.Stop();
-
-            lock (_gameLock)
-            {
-                foreach (var game in _games.Values)
-                    game.StopTimer();
-            }
-
+            foreach (var game in _games.Values)
+                game.StopTimer();
             foreach (var client in GetConnectedClients())
                 await client.DisconnectAsync();
-
             LogInfo("Server stopped");
         }
 
         public List<ClientHandler> GetConnectedClients()
         {
-            lock (_clientLock)
+            lock (_lock)
                 return new List<ClientHandler>(_connectedClients);
         }
 
         public int GetClientCount()
         {
-            lock (_clientLock)
+            lock (_lock)
                 return _connectedClients.Count;
         }
 
@@ -478,5 +540,152 @@ namespace Server.Core
     public class ClientDisconnectedEventArgs : EventArgs
     {
         public string? ClientId { get; set; }
+    }
+
+    internal sealed class ActiveGame
+    {
+        public const string BotId = "BOT";
+        public string GameID { get; } = Guid.NewGuid().ToString("N");
+        public string PlayerXID { get; private set; } = "";
+        public string PlayerXName { get; private set; } = "";
+        public string PlayerOID { get; private set; } = "";
+        public string PlayerOName { get; private set; } = "";
+        public string CurrentTurnID { get; private set; } = "";
+        public string CurrentSymbol { get; private set; } = "X";
+        public GameLogic.Board Board { get; } = new GameLogic.Board();
+        public int TimeRemaining { get; set; }
+        public int TurnSeconds { get; private set; }
+        public bool IsGameOver { get; set; }
+        public string WinnerID { get; set; } = "";
+        public string ResultText { get; set; } = "";
+        public bool IsBotGame { get; private set; }
+        public string BotDifficulty { get; private set; } = "Easy";
+        public List<GameLogic.Move> Moves { get; } = new List<GameLogic.Move>();
+        private Timer? _timer;
+        private readonly GameLogic.GameService _gameService = new GameLogic.GameService();
+
+        public static ActiveGame CreateOnline(string xId, string xName, string oId, string oName, int turnSeconds)
+        {
+            return new ActiveGame
+            {
+                PlayerXID = xId,
+                PlayerXName = xName,
+                PlayerOID = oId,
+                PlayerOName = oName,
+                CurrentTurnID = xId,
+                TurnSeconds = Math.Max(15, turnSeconds),
+                TimeRemaining = Math.Max(15, turnSeconds)
+            };
+        }
+
+        public static ActiveGame CreateBot(string xId, string xName, string oId, string oName, int turnSeconds, string difficulty)
+        {
+            var game = CreateOnline(xId, xName, oId, oName, turnSeconds);
+            game.IsBotGame = true;
+            game.BotDifficulty = difficulty;
+            return game;
+        }
+
+        public void StartTimer(Action tick)
+        {
+            _timer = new Timer(_ => tick(), null, 1000, 1000);
+        }
+
+        public void StopTimer()
+        {
+            _timer?.Dispose();
+            _timer = null;
+        }
+
+        public string SymbolOf(string playerId)
+        {
+            if (playerId == PlayerXID)
+                return "X";
+            if (playerId == PlayerOID)
+                return "O";
+            return "";
+        }
+
+        public string OpponentOf(string playerId) => playerId == PlayerXID ? PlayerOID : PlayerXID;
+
+        public bool PlaceMove(string playerId, string symbol, int row, int col)
+        {
+            var value = GameLogic.CellValueExtensions.FromSymbol(symbol);
+            if (!Board.Place(row, col, value))
+                return false;
+
+            Moves.Add(new GameLogic.Move { Row = row, Col = col, PlayerID = playerId, Symbol = symbol });
+            TimeRemaining = TurnSeconds;
+            return true;
+        }
+
+        public void SwitchTurn()
+        {
+            CurrentTurnID = CurrentTurnID == PlayerXID ? PlayerOID : PlayerXID;
+            CurrentSymbol = CurrentTurnID == PlayerXID ? "X" : "O";
+            TimeRemaining = TurnSeconds;
+        }
+
+        public bool HasWinner(int row, int col, string symbol) =>
+        GameLogic.WinChecker.HasWinner(Board, row, col, symbol);
+
+        public bool IsBoardFull() => Board.IsFull();
+
+
+        public (int row, int col) ChooseBotMove()
+        {
+            var botSymbol = SymbolOf(BotId);
+            return _gameService.ChooseBotMove(Board, Moves, botSymbol, BotDifficulty);
+        }
+
+
+        public GameStateDto ToDto(string viewerId)
+        {
+            return new GameStateDto
+            {
+                GameID = GameID,
+                PlayerXID = PlayerXID,
+                PlayerXName = PlayerXName,
+                PlayerOID = PlayerOID,
+                PlayerOName = PlayerOName,
+                CurrentTurnID = CurrentTurnID,
+                CurrentSymbol = CurrentSymbol,
+                YourSymbol = SymbolOf(viewerId),
+                Board = Board.GetSnapshot(),
+                TimeRemaining = TimeRemaining,
+                TurnSeconds = TurnSeconds,
+                IsGameOver = IsGameOver,
+                WinnerID = WinnerID,
+                ResultText = ResultText,
+                Moves = Moves.Select(m => new MoveRecordDto
+                {
+                    Row = m.Row,
+                    Col = m.Col,
+                    PlayerID = m.PlayerID,
+                    Symbol = m.Symbol
+                }).ToList(),
+                IsBotGame = IsBotGame
+            };
+        }
+
+        public HistoryItemDto ToHistory(string playerId, string opponentName)
+        {
+            var result = WinnerID == "" ? "Hoa" : WinnerID == playerId ? "Thang" : "Thua";
+            return new HistoryItemDto
+            {
+                GameID = $"{playerId}-{GameID}",
+                PlayedAt = DateTime.Now,
+                OpponentName = opponentName,
+                Result = result,
+                Mode = IsBotGame ? $"Bot {BotDifficulty}" : "Online",
+                Moves = Moves.Select(m => new MoveRecordDto
+                {
+                    Row = m.Row,
+                    Col = m.Col,
+                    PlayerID = m.PlayerID,
+                    Symbol = m.Symbol
+                }).ToList(),
+            };
+        }
     }
 }
