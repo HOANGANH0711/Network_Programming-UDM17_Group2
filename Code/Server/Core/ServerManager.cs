@@ -4,6 +4,7 @@ using Shared.DTO;
 using Shared.Enums;
 using Shared.Models;
 using Server.GameLogic;
+using Server.Handlers;
 
 namespace Server.Core
 {
@@ -12,8 +13,7 @@ namespace Server.Core
         private readonly int _serverPort;
         private readonly object _lock = new object();
         private readonly List<ClientHandler> _connectedClients = new List<ClientHandler>();
-        private readonly Dictionary<string, UserDTO> _users = new Dictionary<string, UserDTO>();
-        private readonly Dictionary<string, InviteDto> _pendingInvites = new Dictionary<string, InviteDto>();
+        private readonly MatchmakingService _matchmaking;
         private readonly Dictionary<string, ActiveGame> _games = new Dictionary<string, ActiveGame>();
         private readonly List<HistoryItemDto> _history = new List<HistoryItemDto>();
         private readonly string _historyPath = Path.Combine(AppContext.BaseDirectory, "history_items.json");
@@ -27,6 +27,7 @@ namespace Server.Core
         public ServerManager(int port = 5000)
         {
             _serverPort = port;
+            _matchmaking = new MatchmakingService(FindClient, GetConnectedClients, StartOnlineGameAsync);
             LoadHistory();
         }
 
@@ -103,18 +104,18 @@ namespace Server.Core
                 switch (packet.Command)
                 {
                     case CommandType.LOGIN:
-                        await LoginAsync(client, packet.Data);
+                        await _matchmaking.LoginAsync(client, packet.Data);
                         break;
                     case CommandType.GET_PLAYER_LIST:
                     case CommandType.RETURN_TO_LOBBY:
-                        await SendLobbyAsync(client);
+                        await _matchmaking.SendLobbyAsync(client);
                         break;
                     case CommandType.INVITE:
                     case CommandType.CHALLENGE:
-                        await SendInviteAsync(client, packet.Data);
+                        await _matchmaking.SendInviteAsync(client, packet.Data);
                         break;
                     case CommandType.INVITE_RESPONSE:
-                        await HandleInviteResponseAsync(client, packet.Data);
+                        await _matchmaking.HandleInviteResponseAsync(client, packet.Data);
                         break;
                     case CommandType.MAKE_MOVE:
                         await HandleMoveAsync(client, packet.Data);
@@ -149,77 +150,15 @@ namespace Server.Core
             }
         }
 
-        private async Task LoginAsync(ClientHandler client, string username)
-        {
-            username = string.IsNullOrWhiteSpace(username) ? $"Player {client.ClientId}" : username.Trim();
-            lock (_lock)
-            {
-                _users[client.ClientId] = new UserDTO
-                {
-                    UserID = client.ClientId,
-                    UserName = username,
-                    IsOnline = true,
-                    IsInGame = false
-                };
-            }
-
-            await client.SendPacketAsync(PacketHelper.Create(CommandType.SUCCESS, "Logged in", client.ClientId));
-            await BroadcastLobbyAsync();
-        }
-
-        private async Task SendInviteAsync(ClientHandler client, string data)
-        {
-            var invite = Serializer.Deserialize<InviteDto>(data);
-            if (invite == null)
-                return;
-
-            lock (_lock)
-            {
-                invite.FromPlayerId = client.ClientId;
-                invite.FromPlayerName = GetName(client.ClientId);
-                invite.ToPlayerName = GetName(invite.ToPlayerId);
-                _pendingInvites[$"{invite.FromPlayerId}:{invite.ToPlayerId}"] = invite;
-            }
-
-            var target = FindClient(invite.ToPlayerId);
-            if (target != null)
-                await target.SendPacketAsync(PacketHelper.Create(CommandType.INVITE, invite, client.ClientId));
-        }
-
-        private async Task HandleInviteResponseAsync(ClientHandler client, string data)
-        {
-            var response = Serializer.Deserialize<InviteResponseDto>(data);
-            if (response == null)
-                return;
-
-            InviteDto? invite = null;
-            lock (_lock)
-            {
-                _pendingInvites.TryGetValue($"{response.FromPlayerId}:{client.ClientId}", out invite);
-                _pendingInvites.Remove($"{response.FromPlayerId}:{client.ClientId}");
-            }
-
-            var inviter = FindClient(response.FromPlayerId);
-            if (!response.Accepted)
-            {
-                if (inviter != null)
-                    await inviter.SendPacketAsync(PacketHelper.Create(CommandType.INVITE_RESPONSE, response));
-                return;
-            }
-
-            if (invite != null)
-                await StartOnlineGameAsync(invite);
-        }
-
         private async Task StartOnlineGameAsync(InviteDto invite)
         {
             var xId = invite.InviterSymbol == "X" ? invite.FromPlayerId : invite.ToPlayerId;
             var oId = invite.InviterSymbol == "X" ? invite.ToPlayerId : invite.FromPlayerId;
-            var game = ActiveGame.CreateOnline(xId, GetName(xId), oId, GetName(oId), invite.TurnSeconds);
+            var game = ActiveGame.CreateOnline(xId, _matchmaking.GetName(xId), oId, _matchmaking.GetName(oId), invite.TurnSeconds);
             AddGame(game);
             await BroadcastGameStateAsync(game, CommandType.GAME_START);
             game.StartTimer(() => _ = TickGameAsync(game.GameID));
-            await BroadcastLobbyAsync();
+            await _matchmaking.BroadcastLobbyAsync();
         }
 
         private async Task StartBotGameAsync(ClientHandler client, string data)
@@ -228,12 +167,12 @@ namespace Server.Core
             var playerIsX = request.PlayerSymbol != "O";
             var xId = playerIsX ? client.ClientId : ActiveGame.BotId;
             var oId = playerIsX ? ActiveGame.BotId : client.ClientId;
-            var game = ActiveGame.CreateBot(xId, xId == client.ClientId ? GetName(client.ClientId) : "Bot", oId, oId == client.ClientId ? GetName(client.ClientId) : "Bot", request.TurnSeconds, request.Difficulty);
+            var game = ActiveGame.CreateBot(xId, xId == client.ClientId ? _matchmaking.GetName(client.ClientId) : "Bot", oId, oId == client.ClientId ? _matchmaking.GetName(client.ClientId) : "Bot", request.TurnSeconds, request.Difficulty);
             AddGame(game);
             await BroadcastGameStateAsync(game, CommandType.GAME_START);
             game.StartTimer(() => _ = TickGameAsync(game.GameID));
             await MaybeBotMoveAsync(game);
-            await BroadcastLobbyAsync();
+            await _matchmaking.BroadcastLobbyAsync();
         }
 
         private async Task HandleMoveAsync(ClientHandler client, string data)
@@ -259,7 +198,7 @@ namespace Server.Core
             await BroadcastGameStateAsync(game, CommandType.GAME_STATE);
 
             if (game.HasWinner(move.Row, move.Col, symbol))
-                await EndGameAsync(game, client.ClientId, $"{GetName(client.ClientId)} thang do du 5 quan lien tiep");
+                await EndGameAsync(game, client.ClientId, $"{_matchmaking.GetName(client.ClientId)} thang do du 5 quan lien tiep");
             else if (game.IsBoardFull())
                 await EndGameAsync(game, "", "Hoa do ban co day");
             else
@@ -303,7 +242,7 @@ namespace Server.Core
             {
                 var loser = game.CurrentTurnID;
                 var winner = game.OpponentOf(loser);
-                await EndGameAsync(game, winner, $"{GetName(loser)} het thoi gian va bi xu thua");
+                await EndGameAsync(game, winner, $"{_matchmaking.GetName(loser)} het thoi gian va bi xu thua");
                 return;
             }
 
@@ -314,7 +253,7 @@ namespace Server.Core
         {
             var game = GetGameByPlayer(client.ClientId);
             if (game != null)
-                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{GetName(client.ClientId)} dau hang");
+                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{_matchmaking.GetName(client.ClientId)} dau hang");
         }
 
         private async Task EndGameAsync(ActiveGame? game, string winnerId, string result)
@@ -329,13 +268,13 @@ namespace Server.Core
 
             lock (_lock)
             {
-                MarkInGame(game.PlayerXID, false);
-                MarkInGame(game.PlayerOID, false);
+                _matchmaking.MarkInGame(game.PlayerXID, false);
+                _matchmaking.MarkInGame(game.PlayerOID, false);
                 SaveHistory(game);
             }
 
             await BroadcastGameStateAsync(game, CommandType.GAME_END);
-            await BroadcastLobbyAsync();
+            await _matchmaking.BroadcastLobbyAsync();
         }
 
         private async Task BroadcastToGameAsync(ClientHandler client, string data, CommandType command)
@@ -373,18 +312,6 @@ namespace Server.Core
                 await client.SendPacketAsync(packet);
         }
 
-        private async Task SendLobbyAsync(ClientHandler client)
-        {
-            await client.SendPacketAsync(PacketHelper.Create(CommandType.PLAYER_LIST, GetUsers()));
-        }
-
-        private async Task BroadcastLobbyAsync()
-        {
-            var packet = PacketHelper.Create(CommandType.LOBBY_UPDATE, GetUsers());
-            var clients = GetConnectedClients();
-            await Task.WhenAll(clients.Select(c => c.SendPacketAsync(packet)));
-        }
-
         private async Task SendHistoryAsync(ClientHandler client)
         {
             List<HistoryItemDto> items;
@@ -399,14 +326,14 @@ namespace Server.Core
             lock (_lock)
             {
                 _connectedClients.RemoveAll(c => c.ClientId == client.ClientId);
-                _users.Remove(client.ClientId);
+                _matchmaking.RemovePlayer(client.ClientId);
                 game = GetGameByPlayer(client.ClientId);
             }
 
             if (game != null && !game.IsGameOver)
-                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{GetName(client.ClientId)} mat ket noi");
+                await EndGameAsync(game, game.OpponentOf(client.ClientId), $"{_matchmaking.GetName(client.ClientId)} mat ket noi");
 
-            await BroadcastLobbyAsync();
+            await _matchmaking.BroadcastLobbyAsync();
             ClientDisconnected?.Invoke(this, new ClientDisconnectedEventArgs { ClientId = client.ClientId });
         }
 
@@ -415,17 +342,17 @@ namespace Server.Core
             lock (_lock)
             {
                 _games[game.GameID] = game;
-                MarkInGame(game.PlayerXID, game.PlayerXID != ActiveGame.BotId);
-                MarkInGame(game.PlayerOID, game.PlayerOID != ActiveGame.BotId);
+                _matchmaking.MarkInGame(game.PlayerXID, game.PlayerXID != ActiveGame.BotId);
+                _matchmaking.MarkInGame(game.PlayerOID, game.PlayerOID != ActiveGame.BotId);
             }
         }
 
         private void SaveHistory(ActiveGame game)
         {
             if (game.PlayerXID != ActiveGame.BotId)
-                _history.Add(game.ToHistory(game.PlayerXID, GetName(game.PlayerOID)));
+                _history.Add(game.ToHistory(game.PlayerXID, _matchmaking.GetName(game.PlayerOID)));
             if (game.PlayerOID != ActiveGame.BotId)
-                _history.Add(game.ToHistory(game.PlayerOID, GetName(game.PlayerXID)));
+                _history.Add(game.ToHistory(game.PlayerOID, _matchmaking.GetName(game.PlayerXID)));
             File.WriteAllText(_historyPath, Serializer.Serialize(_history));
         }
 
@@ -444,25 +371,6 @@ namespace Server.Core
             {
                 LogError($"Could not load history: {ex.Message}");
             }
-        }
-        private void MarkInGame(string playerId, bool isInGame)
-        {
-            if (_users.TryGetValue(playerId, out var user))
-                user.IsInGame = isInGame;
-        }
-
-        private List<UserDTO> GetUsers()
-        {
-            lock (_lock)
-                return _users.Values.Select(u => new UserDTO { UserID = u.UserID, UserName = u.UserName, IsOnline = u.IsOnline, IsInGame = u.IsInGame }).ToList();
-        }
-
-        private string GetName(string playerId)
-        {
-            if (playerId == ActiveGame.BotId)
-                return "Bot";
-            lock (_lock)
-                return _users.TryGetValue(playerId, out var user) ? user.UserName : playerId;
         }
 
         private ClientHandler? FindClient(string id) => GetConnectedClients().FirstOrDefault(c => c.ClientId == id);

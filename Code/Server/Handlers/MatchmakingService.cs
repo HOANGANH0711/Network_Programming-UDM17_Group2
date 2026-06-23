@@ -1,7 +1,4 @@
-﻿using Shared.DTO;
-using Shared.Enums;
-using Shared.Models;
-
+﻿using Server.Core;
 using Shared.DTO;
 using Shared.Enums;
 using Shared.Models;
@@ -10,134 +7,131 @@ namespace Server.Handlers
 {
     public class MatchmakingService
     {
-        private readonly LobbySession _lobby = new();
+        private const string BotId = "BOT";
+        private readonly object _lock = new object();
+        private readonly Dictionary<string, UserDTO> _users = new();
         private readonly Dictionary<string, InviteDto> _pendingInvites = new();
+        private readonly Func<string, ClientHandler?> _findClient;
+        private readonly Func<IReadOnlyList<ClientHandler>> _getConnectedClients;
+        private readonly Func<InviteDto, Task> _startOnlineGame;
 
-        public event Action<string, object>? SendToClient;
-        public event Action<object>? BroadcastToLobby;
-        public event Func<string, string, string>? CreateGameRoom;
-
-        public bool PlayerJoinLobby(string playerId, string playerName)
+        public MatchmakingService(
+            Func<string, ClientHandler?> findClient,
+            Func<IReadOnlyList<ClientHandler>> getConnectedClients,
+            Func<InviteDto, Task> startOnlineGame)
         {
-            var player = new Player(playerId, playerName);
-            bool added = _lobby.AddPlayer(player);
-            if (added) BroadcastLobbyUpdate();
-            return added;
+            _findClient = findClient;
+            _getConnectedClients = getConnectedClients;
+            _startOnlineGame = startOnlineGame;
         }
 
-        public void PlayerLeaveLobby(string playerId)
+        public async Task LoginAsync(ClientHandler client, string username)
         {
-            if (!_lobby.IsOnline(playerId)) return;
-            CancelInvitesOf(playerId);
-            _lobby.RemovePlayer(playerId);
-            BroadcastLobbyUpdate();
-        }
-
-        public List<Player> GetOnlinePlayers() => _lobby.GetOnlinePlayers();
-
-        public void BroadcastLobbyUpdate()
-        {
-            var dto = new LobbyUpdateDto
+            username = string.IsNullOrWhiteSpace(username) ? $"Player {client.ClientId}" : username.Trim();
+            lock (_lock)
             {
-                OnlinePlayers = _lobby.GetOnlinePlayers().Select(p => new PlayerInfoDto
+                _users[client.ClientId] = new UserDTO
                 {
-                    PlayerId = p.PlayerId,
-                    PlayerName = p.PlayerName,
-                    Status = p.Status.ToString()
-                }).ToList()
-            };
-            BroadcastToLobby?.Invoke(dto);
-        }
-
-        public bool SendInvite(string fromId, string toId)
-        {
-            var from = _lobby.GetPlayer(fromId);
-            var to = _lobby.GetPlayer(toId);
-
-            if (from == null || to == null) return false;
-            if (to.Status != PlayerStatus.Online) return false;
-
-            var invite = new InviteDto
-            {
-                FromPlayerId = fromId,
-                FromPlayerName = from.PlayerName,
-                ToPlayerId = toId
-            };
-
-            _pendingInvites[toId] = invite;
-            _lobby.UpdateStatus(fromId, PlayerStatus.InQueue);
-            _lobby.UpdateStatus(toId, PlayerStatus.InQueue);
-
-            SendToClient?.Invoke(toId, invite);
-            return true;
-        }
-
-        public void RespondToInvite(string responderId, bool accepted)
-        {
-            if (!_pendingInvites.TryGetValue(responderId, out var invite)) return;
-            _pendingInvites.Remove(responderId);
-
-            if (accepted)
-            {
-                StartGame(invite.FromPlayerId, invite.ToPlayerId);
-            }
-            else
-            {
-                _lobby.UpdateStatus(invite.FromPlayerId, PlayerStatus.Online);
-                _lobby.UpdateStatus(invite.ToPlayerId, PlayerStatus.Online);
-                SendToClient?.Invoke(invite.FromPlayerId, new { Type = "INVITE_DECLINED" });
-                BroadcastLobbyUpdate();
-            }
-        }
-
-        private void StartGame(string player1Id, string player2Id)
-        {
-            var p1 = _lobby.GetPlayer(player1Id);
-            var p2 = _lobby.GetPlayer(player2Id);
-            if (p1 == null || p2 == null) return;
-
-            string roomId = CreateGameRoom?.Invoke(player1Id, player2Id) ?? Guid.NewGuid().ToString();
-
-            _lobby.UpdateStatus(player1Id, PlayerStatus.InGame);
-            _lobby.UpdateStatus(player2Id, PlayerStatus.InGame);
-
-            var gameStart = new GameStartDto
-            {
-                RoomId = roomId,
-                Player1Id = p1.PlayerId,
-                Player1Name = p1.PlayerName,
-                Player2Id = p2.PlayerId,
-                Player2Name = p2.PlayerName
-            };
-
-            SendToClient?.Invoke(player1Id, gameStart);
-            SendToClient?.Invoke(player2Id, gameStart);
-            BroadcastLobbyUpdate();
-        }
-
-        private void CancelInvitesOf(string playerId)
-        {
-            if (_pendingInvites.TryGetValue(playerId, out var invite))
-            {
-                _lobby.UpdateStatus(invite.FromPlayerId, PlayerStatus.Online);
-                SendToClient?.Invoke(invite.FromPlayerId, new { Type = "INVITE_CANCELLED" });
-                _pendingInvites.Remove(playerId);
+                    UserID = client.ClientId,
+                    UserName = username,
+                    IsOnline = true,
+                    IsInGame = false
+                };
             }
 
-            var asInviter = _pendingInvites.Where(kv => kv.Value.FromPlayerId == playerId).ToList();
-            foreach (var kv in asInviter)
+            await client.SendPacketAsync(PacketHelper.Create(CommandType.SUCCESS, "Logged in", client.ClientId));
+            await BroadcastLobbyAsync();
+        }
+
+        public async Task SendInviteAsync(ClientHandler client, string data)
+        {
+            var invite = Serializer.Deserialize<InviteDto>(data);
+            if (invite == null)
+                return;
+
+            lock (_lock)
             {
-                _lobby.UpdateStatus(kv.Value.ToPlayerId, PlayerStatus.Online);
-                SendToClient?.Invoke(kv.Value.ToPlayerId, new { Type = "INVITE_CANCELLED" });
-                _pendingInvites.Remove(kv.Key);
+                invite.FromPlayerId = client.ClientId;
+                invite.FromPlayerName = GetName(client.ClientId);
+                invite.ToPlayerName = GetName(invite.ToPlayerId);
+                _pendingInvites[$"{invite.FromPlayerId}:{invite.ToPlayerId}"] = invite;
+            }
+
+            var target = _findClient(invite.ToPlayerId);
+            if (target != null)
+                await target.SendPacketAsync(PacketHelper.Create(CommandType.INVITE, invite, client.ClientId));
+        }
+
+        public async Task HandleInviteResponseAsync(ClientHandler client, string data)
+        {
+            var response = Serializer.Deserialize<InviteResponseDto>(data);
+            if (response == null)
+                return;
+
+            InviteDto? invite = null;
+            lock (_lock)
+            {
+                _pendingInvites.TryGetValue($"{response.FromPlayerId}:{client.ClientId}", out invite);
+                _pendingInvites.Remove($"{response.FromPlayerId}:{client.ClientId}");
+            }
+
+            var inviter = _findClient(response.FromPlayerId);
+            if (!response.Accepted)
+            {
+                if (inviter != null)
+                    await inviter.SendPacketAsync(PacketHelper.Create(CommandType.INVITE_RESPONSE, response));
+                return;
+            }
+
+            if (invite != null)
+                await _startOnlineGame(invite);
+        }
+
+        public async Task SendLobbyAsync(ClientHandler client)
+        {
+            await client.SendPacketAsync(PacketHelper.Create(CommandType.PLAYER_LIST, GetUsers()));
+        }
+
+        public async Task BroadcastLobbyAsync()
+        {
+            var packet = PacketHelper.Create(CommandType.LOBBY_UPDATE, GetUsers());
+            var clients = _getConnectedClients();
+            await Task.WhenAll(clients.Select(c => c.SendPacketAsync(packet)));
+        }
+
+        public void RemovePlayer(string clientId)
+        {
+            lock (_lock)
+                _users.Remove(clientId);
+        }
+
+        public void MarkInGame(string playerId, bool isInGame)
+        {
+            lock (_lock)
+            {
+                if (_users.TryGetValue(playerId, out var user))
+                    user.IsInGame = isInGame;
             }
         }
 
-        public void OnGameEnded(string player1Id, string player2Id)
+        public string GetName(string playerId)
         {
-            _lobby.UpdateStatus(player1Id, PlayerStatus.Online);
-            _lobby.UpdateStatus(player2Id, PlayerStatus.Online);
-            BroadcastLobbyUpdate();
+            if (playerId == BotId)
+                return "Bot";
+            lock (_lock)
+                return _users.TryGetValue(playerId, out var user) ? user.UserName : playerId;
+        }
+
+        private List<UserDTO> GetUsers()
+        {
+            lock (_lock)
+                return _users.Values.Select(u => new UserDTO
+                {
+                    UserID = u.UserID,
+                    UserName = u.UserName,
+                    IsOnline = u.IsOnline,
+                    IsInGame = u.IsInGame
+                }).ToList();
         }
     }
 }
