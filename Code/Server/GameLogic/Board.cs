@@ -3,19 +3,29 @@
     public class Board
     {
         public const int Size = 15;
-        public int[][] Cells { get; } = Enumerable.Range(0, Size).Select(_ => new int[Size]).ToArray();
 
-        public bool PlaceMove(string symbol, int row, int col)
+        private readonly int[][] _cells =
+            Enumerable.Range(0, Size).Select(_ => new int[Size]).ToArray();
+
+        public bool Place(int row, int col, CellValue value)
         {
-            if (row < 0 || row >= Size || col < 0 || col >= Size || Cells[row][col] != 0)
+            if (row < 0 || row >= Size || col < 0 || col >= Size)
+                return false;
+            if (_cells[row][col] != 0)
                 return false;
 
-            Cells[row][col] = symbol == "X" ? 1 : 2;
+            _cells[row][col] = (int)value;
             return true;
         }
 
-        public bool IsFull() => Cells.All(row => row.All(cell => cell != 0));
+        public CellValue Get(int row, int col) => (CellValue)_cells[row][col];
 
-        public int[][] ToArray() => Cells.Select(row => row.ToArray()).ToArray();
+        internal int GetRaw(int row, int col) => _cells[row][col];
+
+        internal void SetRaw(int row, int col, int value) => _cells[row][col] = value;
+
+        public bool IsFull() => _cells.All(row => row.All(cell => cell != 0));
+
+        public int[][] GetSnapshot() => _cells.Select(row => row.ToArray()).ToArray();
     }
 }
