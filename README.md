@@ -101,7 +101,6 @@ Tích hợp hệ thống và đảm bảo hoạt động end-to-end.
 * Đồng bộ trạng thái game
 * Kiểm thử Client–Server end-to-end
 * Debug và xử lý lỗi hệ thống
-* Lưu trữ lịch sử trận đấu
 
 ---
 
